@@ -1,0 +1,15 @@
+[package]
+name = "lmdb-zero"
+version = "0.0.1"
+authors = ["FullContact, Inc"]
+license = "MIT/Apache-2.0"
+readme = "README.md"
+# TODO: Links
+description = """
+An safe, zero-cost, unabashedly non-abstract wrapper around LMDB.
+"""
+
+[dependencies]
+lmdb-sys = "0.6.0"
+bitflags = "0.7.0"
+libc = "0.2.14"
