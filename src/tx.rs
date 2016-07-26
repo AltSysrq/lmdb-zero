@@ -39,17 +39,124 @@ pub mod put {
             /// database was opened with `DUPSORT`. The function will return
             /// `KEYEXIST` if the key/data pair already appears in the
             /// database.
+            ///
+            /// ## Example
+            ///
+            /// ```
+            /// # include!("src/example_helpers.rs");
+            /// # fn main() {
+            /// # let env = create_env();
+            /// let db = lmdb::Database::open(
+            ///   &env, Some("reversed"), &lmdb::DatabaseOptions::new(
+            ///     lmdb::db::DUPSORT | lmdb::db::CREATE))
+            ///   .unwrap();
+            /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+            /// {
+            ///   let mut access = txn.access();
+            ///   access.put(&db, "Fruit", "Apple", lmdb::put::Flags::empty()).unwrap();
+            ///   access.put(&db, "Fruit", "Orange", lmdb::put::Flags::empty()).unwrap();
+            ///   // Duplicate, but that's OK by default
+            ///   access.put(&db, "Fruit", "Apple", lmdb::put::Flags::empty()).unwrap();
+            ///   // `NODUPDATA` blocks adding an identical item
+            ///   assert!(access.put(&db, "Fruit", "Apple", lmdb::put::NODUPDATA).is_err());
+            ///   // But doesn't affect pairs not already present
+            ///   access.put(&db, "Fruit", "Durian", lmdb::put::NODUPDATA).unwrap();
+            /// }
+            /// txn.commit().unwrap();
+            /// # }
+            /// ```
             const NODUPDATA = ffi::MDB_NODUPDATA,
             /// Enter the new key/data pair only if the key does not already
             /// appear in the database. The function will return `KEYEXIST` if
             /// the key already appears in the database, even if the database
-            /// supports duplicates (`DUPSORT`). The data parameter will be set
-            /// to point to the existing item.
+            /// supports duplicates (`DUPSORT`).
+            ///
+            /// ## Examples
+            ///
+            /// ### In a 1:1 database
+            ///
+            /// ```
+            /// # include!("src/example_helpers.rs");
+            /// # fn main() {
+            /// # let env = create_env();
+            /// let db = lmdb::Database::open(
+            ///   &env, None, &lmdb::DatabaseOptions::defaults())
+            ///   .unwrap();
+            /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+            /// {
+            ///   let mut access = txn.access();
+            ///   access.put(&db, "Fruit", "Apple", lmdb::put::Flags::empty()).unwrap();
+            ///   // By default, collisions overwrite the old value
+            ///   access.put(&db, "Fruit", "Orange", lmdb::put::Flags::empty()).unwrap();
+            ///   assert_eq!("Orange", access.get::<str,str>(&db, "Fruit").unwrap());
+            ///   // But `NOOVERWRITE` prevents that
+            ///   assert!(access.put(&db, "Fruit", "Durian", lmdb::put::NOOVERWRITE).is_err());
+            ///   assert_eq!("Orange", access.get::<str,str>(&db, "Fruit").unwrap());
+            /// }
+            /// txn.commit().unwrap();
+            /// # }
+            /// ```
+            ///
+            /// ### In a `DUPSORT` database
+            ///
+            /// ```
+            /// # include!("src/example_helpers.rs");
+            /// # fn main() {
+            /// # let env = create_env();
+            /// let db = lmdb::Database::open(
+            ///   &env, Some("reversed"), &lmdb::DatabaseOptions::new(
+            ///     lmdb::db::DUPSORT | lmdb::db::CREATE))
+            ///   .unwrap();
+            /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+            /// {
+            ///   let mut access = txn.access();
+            ///   // Ordinarily, we can add multiple items per key
+            ///   access.put(&db, "Fruit", "Apple", lmdb::put::Flags::empty()).unwrap();
+            ///   access.put(&db, "Fruit", "Orange", lmdb::put::Flags::empty()).unwrap();
+            ///   let mut cursor = txn.cursor(&db).unwrap();
+            ///   cursor.seek_k::<str,str>(&access, "Fruit").unwrap();
+            ///   assert_eq!(2, cursor.count().unwrap());
+            ///
+            ///   // But this can be prevented with `NOOVERWRITE`
+            ///   access.put(&db, "Veggie", "Carrot", lmdb::put::NOOVERWRITE).unwrap();
+            ///   assert!(access.put(&db, "Veggie", "Squash", lmdb::put::NOOVERWRITE).is_err());
+            ///   cursor.seek_k::<str,str>(&access, "Veggie").unwrap();
+            ///   assert_eq!(1, cursor.count().unwrap());
+            /// }
+            /// txn.commit().unwrap();
+            /// # }
+            /// ```
+            // TODO: "The data parameter will be set to point to the existing
+            // item." We should provide functionality to support that.
             const NOOVERWRITE = ffi::MDB_NOOVERWRITE,
             /// Append the given key/data pair to the end of the database. This
             /// option allows fast bulk loading when keys are already known to
             /// be in the correct order. Loading unsorted keys with this flag
             /// will cause a `KEYEXIST` error.
+            ///
+            /// ## Example
+            ///
+            /// ```
+            /// # include!("src/example_helpers.rs");
+            /// # fn main() {
+            /// # let env = create_env();
+            /// let db = lmdb::Database::open(
+            ///   &env, None, &lmdb::DatabaseOptions::defaults())
+            ///   .unwrap();
+            /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+            /// {
+            ///   let mut access = txn.access();
+            ///   // Load values in ascending order
+            ///   access.put(&db, "France", "Paris", lmdb::put::APPEND).unwrap();
+            ///   access.put(&db, "Germany", "Berlin", lmdb::put::APPEND).unwrap();
+            ///   access.put(&db, "Latvia", "Rīga", lmdb::put::APPEND).unwrap();
+            ///   // Error if you violate ordering
+            ///   assert!(access.put(&db, "Armenia", "Yerevan", lmdb::put::APPEND)
+            ///           .is_err());
+            /// }
+            /// txn.commit().unwrap();
+            /// # }
+            /// ```
             const APPEND = ffi::MDB_APPEND,
             /// As with `APPEND` above, but for sorted dup data.
             const APPENDDUP = ffi::MDB_APPENDDUP,
@@ -63,11 +170,43 @@ pub mod del {
     use libc;
 
     bitflags! {
-        /// Flags used when deleting items.
+        /// Flags used when deleting items via cursors.
         pub flags Flags : libc::c_uint {
             /// Delete all of the data items for the current key instead of
             /// just the current item. This flag may only be specified if the
             /// database was opened with `DUPSORT`.
+            ///
+            /// ## Example
+            ///
+            /// ```
+            /// # include!("src/example_helpers.rs");
+            /// # fn main() {
+            /// # let env = create_env();
+            /// let db = lmdb::Database::open(
+            ///   &env, Some("reversed"), &lmdb::DatabaseOptions::new(
+            ///     lmdb::db::DUPSORT | lmdb::db::CREATE))
+            ///   .unwrap();
+            /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+            /// {
+            ///   let mut access = txn.access();
+            ///   let f = lmdb::put::Flags::empty();
+            ///   access.put(&db, "Fruit", "Apple", f).unwrap();
+            ///   access.put(&db, "Fruit", "Orange", f).unwrap();
+            ///   access.put(&db, "Fruit", "Durian", f).unwrap();
+            ///
+            ///   let mut cursor = txn.cursor(&db).unwrap();
+            ///   cursor.seek_kv("Fruit", "Durian").unwrap();
+            ///   // By default, only the current item is deleted.
+            ///   cursor.delete(&mut access, lmdb::del::Flags::empty()).unwrap();
+            ///   cursor.seek_k::<str,str>(&access, "Fruit").unwrap();
+            ///   assert_eq!(2, cursor.count().unwrap());
+            ///   // But with `NODUPDATA`, they will all go away
+            ///   cursor.delete(&mut access, lmdb::del::NODUPDATA).unwrap();
+            ///   assert!(cursor.seek_k::<str,str>(&access, "Fruit").is_err());
+            /// }
+            /// txn.commit().unwrap();
+            /// # }
+            /// ```
             const NODUPDATA = ffi::MDB_NODUPDATA,
         }
     }
@@ -161,9 +300,9 @@ pub struct ConstAccessor<'txn>(&'txn ConstTransaction<'txn>);
 pub struct WriteAccessor<'txn>(ConstAccessor<'txn>);
 
 impl<'env> ConstTransaction<'env> {
-    fn new(env: &'env Environment,
-           parent: Option<&'env mut ConstTransaction<'env>>,
-           flags: c_uint) -> Result<Self> {
+    fn new<'outer: 'env>(env: &'env Environment,
+                         parent: Option<&'env mut ConstTransaction<'outer>>,
+                         flags: c_uint) -> Result<Self> {
         let mut rawtx: *mut ffi::MDB_txn = ptr::null_mut();
         unsafe {
             lmdb_call!(ffi::mdb_txn_begin(
@@ -183,10 +322,28 @@ impl<'env> ConstTransaction<'env> {
     /// ## Panics
     ///
     /// Panics if this function has already been called on this transaction.
+    ///
+    /// ## Example
+    ///
+    /// ```rust,should_panic
+    /// # include!("src/example_helpers.rs");
+    /// # #[allow(unused_vars)]
+    /// # fn main() {
+    /// # let env = create_env();
+    /// let txn = lmdb::ReadTransaction::new(&env).unwrap();
+    /// // Get access the first time
+    /// let access = txn.access();
+    ///
+    /// // You can't get the accessor again, since this would create two
+    /// // references to the same logical memory and allow creating aliased
+    /// // mutable references and so forth.
+    /// let access2 = txn.access(); // PANIC!
+    /// # }
+    /// ```
     pub fn access(&self) -> ConstAccessor {
         assert!(!self.has_yielded_accessor.get(),
                 "Transaction accessor already returned");
-        self.has_yielded_accessor.set(false);
+        self.has_yielded_accessor.set(true);
         ConstAccessor(self)
     }
 
@@ -280,26 +437,41 @@ impl<'env> ReadTransaction<'env> {
             env, None, ffi::MDB_RDONLY))))
     }
 
-    /// Opens a new, read-only transaction as a child transaction of the given
-    /// parent. While the new transaction exists, no operations may be
-    /// performed on the parent or any of its cursors. (These bindings are
-    /// actually stricter, and do not permit cursors or other references into
-    /// the parent to coexist with the child transaction.)
-    ///
-    /// ## Note
-    ///
-    /// A transaction and its cursors must only be used by a single thread
-    /// (enforced by the rust compiler).
-    pub fn new_child(parent: &'env mut ConstTransaction<'env>)
-                     -> Result<Self> {
-        Ok(ReadTransaction(try!(ConstTransaction::new(
-            parent.env, Some(parent), ffi::MDB_RDONLY))))
-    }
-
     /// Dissociates the given cursor from this transaction and its database,
     /// returning a `StaleCursor` which can be reused later.
     ///
     /// This only fails if `cursor` does not belong to this transaction.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// # let db = lmdb::Database::open(
+    /// #   &env, None, &lmdb::DatabaseOptions::defaults())
+    /// #   .unwrap();
+    /// let mut saved_cursor;
+    /// {
+    ///   let txn = lmdb::ReadTransaction::new(&env).unwrap();
+    ///   let cursor = txn.cursor(&db).unwrap();
+    ///   // Do some stuff with `txn` and `cursor`
+    ///
+    ///   // We don't want to realloc `cursor` next time, so save it away
+    ///   saved_cursor = txn.dissoc_cursor(cursor).unwrap();
+    /// } // Read transaction goes away, but our saved cursor remains
+    ///
+    /// {
+    ///   let txn = lmdb::ReadTransaction::new(&env).unwrap();
+    ///   // Rebind the old cursor. It continues operating on `db`.
+    ///   let cursor = txn.assoc_cursor(saved_cursor).unwrap();
+    ///   // Do stuff with txn, cursor
+    ///
+    ///   // We can save the cursor away again
+    ///   saved_cursor = txn.dissoc_cursor(cursor).unwrap();
+    /// }
+    /// # }
+    /// ```
     pub fn dissoc_cursor<'txn,'db>(&self, cursor: Cursor<'txn,'db>)
                                    -> Result<StaleCursor<'db>>
     where 'env: 'db {
@@ -328,6 +500,40 @@ impl<'env> ReadTransaction<'env> {
 
     /// Resets this transaction, releasing most of its resources but allowing
     /// it to be quickly renewed if desired.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// let mut saved_txn;
+    /// {
+    ///   let txn = lmdb::ReadTransaction::new(&env).unwrap();
+    ///   {
+    ///     let access = txn.access();
+    ///     // Do stuff with `txn`, `access`
+    ///   }
+    ///   // Save our transaction so we don't have to reallocate it next time,
+    ///   // but we also don't keep locks around and will later move to the
+    ///   // latest version of the environment.
+    ///   saved_txn = txn.reset();
+    /// }
+    ///
+    /// {
+    ///   // Instead of creating a brand new transaction, renew the one we
+    ///   // saved.
+    ///   let txn = saved_txn.renew().unwrap();
+    ///   {
+    ///     let access = txn.access();
+    ///     // Do stuff with `txn`, `access`
+    ///   }
+    ///
+    ///   // We can save the transaction away again
+    ///   saved_txn = txn.reset();
+    /// }
+    /// # }
+    /// ```
     pub fn reset(self) -> ResetTransaction<'env> {
         unsafe { ffi::mdb_txn_reset(self.0.tx.0); }
         ResetTransaction(self)
@@ -379,15 +585,82 @@ impl<'env> WriteTransaction<'env> {
     /// actually stricter, and do not permit cursors or other references into
     /// the parent to coexist with the child transaction.)
     ///
+    /// After this call, whether or not it succeeds, it is possible to call
+    /// `access()` on the original transaction again one more time, since the
+    /// Rust borrow rules guarantee the old accessor was destroyed by the
+    /// caller already.
+    ///
     /// ## Note
     ///
     /// A transaction and its cursors must only be used by a single thread
     /// (enforced by the rust compiler).
-    pub fn new_child(parent: &'env mut WriteTransaction<'env>)
-                     -> Result<Self> {
-        let env = parent.0.env;
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// let db = lmdb::Database::open(
+    ///   &env, None, &lmdb::DatabaseOptions::defaults()).unwrap();
+    /// let mut txn = lmdb::WriteTransaction::new(&env).unwrap();
+    /// let f = lmdb::put::Flags::empty();
+    /// {
+    ///   let mut access = txn.access();
+    ///   access.put(&db, "Germany", "Berlin", f).unwrap();
+    ///   access.put(&db, "Latvia", "Rīga", f).unwrap();
+    ///   access.put(&db, "France", "Paris", f).unwrap();
+    /// }
+    ///
+    /// {
+    ///   // Open a child transaction and do some more reading and writing.
+    ///   let subtx = txn.child_tx().unwrap();
+    ///   let mut access = subtx.access();
+    ///   assert_eq!("Berlin", access.get::<str,str>(&db, "Germany").unwrap());
+    ///   access.put(&db, "Germany", "Frankfurt", f).unwrap();
+    ///   assert_eq!("Frankfurt", access.get::<str,str>(&db, "Germany").unwrap());
+    ///   // Don't commit --- let the child transaction abort (roll back)
+    /// }
+    ///
+    /// {
+    ///   let mut access = txn.access();
+    ///   // Now we can do some more reading and writing on the original
+    ///   // transaction.
+    ///   // The effect of the aborted child transaction are not visible.
+    ///   access.put(&db, "United Kingdom", "London", f).unwrap();
+    ///   assert_eq!("Berlin", access.get::<str,str>(&db, "Germany").unwrap());
+    /// }
+    ///
+    /// {
+    ///   // Another child.
+    ///   let subtx = txn.child_tx().unwrap();
+    ///   {
+    ///     let mut access = subtx.access();
+    ///     access.put(&db, "Spain", "Madrid", f).unwrap();
+    ///   }
+    ///   // Commit this one this time.
+    ///   subtx.commit().unwrap();
+    /// }
+    ///
+    /// {
+    ///   // Now the changes from the child are visible to this transaction,
+    ///   // but still not outside it.
+    ///   let mut access = txn.access();
+    ///   assert_eq!("Madrid", access.get::<str,str>(&db, "Spain").unwrap());
+    /// }
+    ///
+    /// txn.commit().unwrap();
+    /// # }
+    /// ```
+    pub fn child_tx<'a>(&'a mut self) -> Result<WriteTransaction<'a>>
+    where 'env: 'a {
+        // Allow the caller to later retrieve a new accessor, since the borrow
+        // rules ensure that they've destroyed the old one.
+        self.has_yielded_accessor.set(false);
+
+        let env = self.0.env;
         Ok(WriteTransaction(try!(ConstTransaction::new(
-            env, Some(&mut*parent), 0))))
+            env, Some(&mut*self), 0))))
     }
 
     /// Commits this write transaction.
@@ -486,6 +759,7 @@ impl<'txn> WriteAccessor<'txn> {
     /// reference to it. Be aware that the `FromReservedLmdbBytes` conversion
     /// will be invoked on whatever memory happens to be at the destination
     /// location.
+    // TODO We may want to add an (unsafe) variant which takes an explicit size
     pub fn put_reserve<K : AsLmdbBytes + ?Sized,
                        V : FromReservedLmdbBytes + Sized>(
         &mut self, db: &Database, key: &K, flags: put::Flags) -> Result<&mut V>

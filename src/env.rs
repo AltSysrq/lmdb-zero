@@ -346,21 +346,16 @@ impl Environment {
     /// ## Example
     ///
     /// ```
-    /// extern crate tempdir;
-    /// extern crate lmdb_zero as lmdb;
-    ///
-    /// # fn main() { unsafe { example(&lmdb::EnvBuilder::new().unwrap().open(
-    /// #    tempdir::TempDir::new_in(".", "lmdbzero")
-    /// #      .unwrap().path().to_str().unwrap(),
-    /// #    lmdb::open::Flags::empty(), 0o600).unwrap()); } }
-    /// fn example(env: &lmdb::Environment) {
-    ///   let out = tempdir::TempDir::new_in(".", "lmdbcopy").unwrap();
-    ///   env.copy(out.path().to_str().unwrap(),
-    ///            lmdb::copy::COMPACT).unwrap();
-    ///   // We could now open up an independent environment in `lmdbcopyXXXX`
-    ///   // or upload it somewhere, eg, while `env` could continue being
-    ///   // modified concurrently.
-    /// }
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// let out = tempdir::TempDir::new_in(".", "lmdbcopy").unwrap();
+    /// env.copy(out.path().to_str().unwrap(),
+    ///          lmdb::copy::COMPACT).unwrap();
+    /// // We could now open up an independent environment in `lmdbcopyXXXX`
+    /// // or upload it somewhere, eg, while `env` could continue being
+    /// // modified concurrently.
+    /// # }
     /// ```
     pub fn copy(&self, path: &str, flags: copy::Flags) -> Result<()> {
         let path_cstr = try!(CString::new(path));
@@ -450,6 +445,25 @@ impl Environment {
     /// concurrently with itself or with `get_flags()`. This cannot be
     /// accomplished by using `&mut self`, since any open databases necessarily
     /// have the environment borrowed already.
+    ///
+    /// ## Example
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// unsafe {
+    ///   // Enable the NOMETASYNC and MAPASYNC flags
+    ///   env.set_flags(lmdb::open::NOMETASYNC | lmdb::open::MAPASYNC, true)
+    ///     .unwrap();
+    ///   assert!(env.flags().unwrap().contains(
+    ///     lmdb::open::NOMETASYNC | lmdb::open::MAPASYNC));
+    ///   // Turn MAPASYNC back off, leaving NOMETASYNC set
+    ///   env.set_flags(lmdb::open::MAPASYNC, false).unwrap();
+    ///   assert!(env.flags().unwrap().contains(lmdb::open::NOMETASYNC));
+    ///   assert!(!env.flags().unwrap().contains(lmdb::open::MAPASYNC));
+    /// }
+    /// # }
+    /// ```
     pub unsafe fn set_flags(&self, flags: open::Flags,
                             onoff: bool) -> Result<()> {
         lmdb_call!(ffi::mdb_env_set_flags(

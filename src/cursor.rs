@@ -129,6 +129,22 @@ impl<'txn,'db> Cursor<'txn,'db> {
             try!(from_val(access, &out_val))))
     }
 
+    fn get_0_v<'access, V : FromLmdbBytes + ?Sized>
+        (&mut self, access: &'access ConstAccessor,
+         op: c_uint) -> Result<&'access V>
+    {
+        try!(assert_sensible_cursor(access, self));
+
+        let mut null_key = EMPTY_VAL;
+        let mut out_val = EMPTY_VAL;
+        unsafe {
+            lmdb_call!(ffi::mdb_cursor_get(
+                self.cursor.0, &mut null_key, &mut out_val, op));
+        }
+
+        from_val(access, &out_val)
+    }
+
     fn get_kv_0<K: AsLmdbBytes + ?Sized, V : AsLmdbBytes + ?Sized>
         (&mut self, key: &K, val: &V, op: c_uint) -> Result<()>
     {
@@ -253,30 +269,37 @@ impl<'txn,'db> Cursor<'txn,'db> {
         fn get_current, ffi::MDB_GET_CURRENT
     }
 
-    cursor_get_0_kv! {
-        /// Returns the current key and as many items as possible with that key
-        /// from the current cursor position.
-        ///
-        /// The cursor is advanced so that `next_multiple()` returns the next
-        /// group of items, if any.
-        ///
-        /// The easiest way to use this is for `V` to be a slice of `LmdbRaw`
-        /// types.
-        ///
-        /// This only makes sense on `DUPSORT` databases.
-        ///
-        /// This corresponds to the `mdb_cursor_get` function with the
-        /// `MDB_GET_MULTIPLE` operation.
-        fn get_multiple, ffi::MDB_GET_MULTIPLE
+    /// Returns as many items as possible with the current key from the
+    /// current cursor position.
+    ///
+    /// The cursor is advanced so that `next_multiple()` returns the next
+    /// group of items, if any. Note that this does _not_ return the actual
+    /// key (which LMDB itself does not return, contrary to documentation).
+    ///
+    /// The easiest way to use this is for `V` to be a slice of `LmdbRaw`
+    /// types.
+    ///
+    /// This only makes sense on `DUPSORT` databases.
+    ///
+    /// This corresponds to the `mdb_cursor_get` function with the
+    /// `MDB_GET_MULTIPLE` operation.
+    pub fn get_multiple<'access, V : FromLmdbBytes + ?Sized>(
+        &mut self, access: &'access ConstAccessor)
+        -> Result<&'access V>
+    {
+        self.get_0_v(access, ffi::MDB_GET_MULTIPLE)
     }
 
-    cursor_get_0_kv! {
-        /// Continues fetching items from a cursor positioned by a call to
-        /// `get_multiple()`.
-        ///
-        /// This corresponds to the `mdb_cursor_get` function with the
-        /// `MDB_NEXT_MULTIPLE` operation.
-        fn next_multiple, ffi::MDB_NEXT_MULTIPLE
+    /// Continues fetching items from a cursor positioned by a call to
+    /// `get_multiple()`.
+    ///
+    /// This corresponds to the `mdb_cursor_get` function with the
+    /// `MDB_NEXT_MULTIPLE` operation.
+    pub fn next_multiple<'access, V : FromLmdbBytes + ?Sized>(
+        &mut self, access: &'access ConstAccessor)
+        -> Result<&'access V>
+    {
+        self.get_0_v(access, ffi::MDB_NEXT_MULTIPLE)
     }
 
     cursor_get_0_kv! {
