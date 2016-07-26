@@ -1,0 +1,560 @@
+// Copyright 2016 FullContact, Inc
+//
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+use std::cell::Cell;
+use std::mem;
+use std::ops::{Deref, DerefMut};
+use std::ptr;
+use libc::c_uint;
+
+use ffi;
+
+use env::{self, Environment, Stat};
+use dbi::{db, Database};
+use error::{self, Error, Result};
+use mdb_vals::*;
+use traits::*;
+use cursor::{self, Cursor, StaleCursor};
+
+/// Flags used when calling the various `put` functions.
+pub mod put {
+    use ffi;
+    use libc;
+
+    bitflags! {
+        /// Flags used when calling the various `put` functions.
+        ///
+        /// Note that `RESERVE` and `MULTIPLE` are not exposed in these flags
+        /// because their memory ownership and/or parameter semantics are
+        /// different. `CURRENT` is expressed separately on the cursor
+        /// functions.
+        pub flags Flags : libc::c_uint {
+            /// Enter the new key/data pair only if it does not already appear
+            /// in the database. This flag may only be specified if the
+            /// database was opened with `DUPSORT`. The function will return
+            /// `KEYEXIST` if the key/data pair already appears in the
+            /// database.
+            const NODUPDATA = ffi::MDB_NODUPDATA,
+            /// Enter the new key/data pair only if the key does not already
+            /// appear in the database. The function will return `KEYEXIST` if
+            /// the key already appears in the database, even if the database
+            /// supports duplicates (`DUPSORT`). The data parameter will be set
+            /// to point to the existing item.
+            const NOOVERWRITE = ffi::MDB_NOOVERWRITE,
+            /// Append the given key/data pair to the end of the database. This
+            /// option allows fast bulk loading when keys are already known to
+            /// be in the correct order. Loading unsorted keys with this flag
+            /// will cause a `KEYEXIST` error.
+            const APPEND = ffi::MDB_APPEND,
+            /// As with `APPEND` above, but for sorted dup data.
+            const APPENDDUP = ffi::MDB_APPENDDUP,
+        }
+    }
+}
+
+/// Flags used when deleting items.
+pub mod del {
+    use ffi;
+    use libc;
+
+    bitflags! {
+        /// Flags used when deleting items.
+        pub flags Flags : libc::c_uint {
+            /// Delete all of the data items for the current key instead of
+            /// just the current item. This flag may only be specified if the
+            /// database was opened with `DUPSORT`.
+            const NODUPDATA = ffi::MDB_NODUPDATA,
+        }
+    }
+}
+
+// This is internal, but used by other parts of the library
+#[derive(Debug)]
+pub struct TxHandle(pub *mut ffi::MDB_txn);
+
+impl Drop for TxHandle {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                ffi::mdb_txn_abort(self.0);
+            }
+            self.0 = ptr::null_mut();
+        }
+    }
+}
+
+impl TxHandle {
+    pub unsafe fn commit(&mut self) -> Result<()> {
+        lmdb_call!(ffi::mdb_txn_commit(self.0));
+        self.0 = ptr::null_mut();
+        Ok(())
+    }
+}
+
+/// Base functionality for an LMDB transaction.
+///
+/// The type is "const" in a similar usage to the modifier in C: One cannot use
+/// it to make any modifications, but also cannot rely on it actually being
+/// read-only. `ConstTransaction`s are used to write code that can operate in
+/// either kind of transaction.
+///
+/// Unlike most other LMDB wrappers, transactions here are (indirectly) the
+/// things in control of accessing data behind cursors. This is in order to
+/// correctly express memory semantics: Moving a cursor does not invalidate
+/// memory obtained from the cursor; however, any mutation through the same
+/// transaction does. We therefore model accesses to data in the environment as
+/// borrows of the transaction and the database themselves (possibly mutable on
+/// the latter), which allows the borrow checker to ensure that all references
+/// are dropped before doing a structural modification.
+///
+/// Note that due to limitations in the Rust borrow checker, one actually needs
+/// to use the `*Accessor` structs to access data. Any transaction will yield
+/// at most one accessor, which is implemented with a runtime check that should
+/// in the vast majority of cases get optimised out.
+///
+/// Mutability of a transaction reference does not indicate mutability of the
+/// underlying database, but rather exclusivity for enforcement of child
+/// transaction semantics.
+#[derive(Debug)]
+pub struct ConstTransaction<'env> {
+    env: &'env Environment,
+    tx: TxHandle,
+    has_yielded_accessor: Cell<bool>,
+}
+
+/// A read-only LMDB transaction.
+///
+/// In addition to all operations valid on `ConstTransaction`, a
+/// `ReadTransaction` can additionally operate on cursors with a lifetime
+/// scoped to the environment instead of the transaction.
+#[derive(Debug)]
+pub struct ReadTransaction<'env>(ConstTransaction<'env>);
+/// A read-write LMDB transaction.
+///
+/// In addition to all operations valid on `ConstTransaction`, it is also
+/// possible to perform writes to the underlying databases.
+#[derive(Debug)]
+pub struct WriteTransaction<'env>(ConstTransaction<'env>);
+
+/// A read-only LMDB transaction that has been reset.
+///
+/// It can be renewed by calling `ResetTransaction::renew()`.
+#[derive(Debug)]
+pub struct ResetTransaction<'env>(ReadTransaction<'env>);
+
+/// A read-only data accessor obtained from a `ConstTransaction`.
+///
+/// There is no corresponding `ReadAccessor`, since there are no additional
+/// operations one can do with a known-read-only accessor.
+#[derive(Debug)]
+pub struct ConstAccessor<'txn>(&'txn ConstTransaction<'txn>);
+/// A read-write data accessor obtained from a `WriteTransaction`.
+///
+/// All operations that can be performed on `ConstAccessor` can also be
+/// performed on `WriteAccessor`.
+#[derive(Debug)]
+pub struct WriteAccessor<'txn>(ConstAccessor<'txn>);
+
+impl<'env> ConstTransaction<'env> {
+    fn new(env: &'env Environment,
+           parent: Option<&'env mut ConstTransaction<'env>>,
+           flags: c_uint) -> Result<Self> {
+        let mut rawtx: *mut ffi::MDB_txn = ptr::null_mut();
+        unsafe {
+            lmdb_call!(ffi::mdb_txn_begin(
+                env::env_ptr(env), parent.map_or(ptr::null_mut(), |p| p.tx.0),
+                flags, &mut rawtx));
+        }
+
+        Ok(ConstTransaction {
+            env: env,
+            tx: TxHandle(rawtx),
+            has_yielded_accessor: Cell::new(false),
+        })
+    }
+
+    /// Returns an accessor used to manipulate data in this transaction.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if this function has already been called on this transaction.
+    pub fn access(&self) -> ConstAccessor {
+        assert!(!self.has_yielded_accessor.get(),
+                "Transaction accessor already returned");
+        self.has_yielded_accessor.set(false);
+        ConstAccessor(self)
+    }
+
+    /// Creates a new cursor scoped to this transaction, bound to the given
+    /// database.
+    pub fn cursor<'txn, 'db>(&'txn self, db: &'db Database)
+                             -> Result<Cursor<'txn,'db>> {
+        try!(db.assert_same_env(self.env));
+
+        let mut raw: *mut ffi::MDB_cursor = ptr::null_mut();
+        unsafe {
+            lmdb_call!(ffi::mdb_cursor_open(self.tx.0, db.dbi(), &mut raw));
+        }
+
+        Ok(unsafe { cursor::create_cursor(raw, self) })
+    }
+
+    /// Returns the internal id of this transaction.
+    pub fn id(&self) -> usize {
+        unsafe {
+            ffi::mdb_txn_id(self.tx.0)
+        }
+    }
+
+    /// Retrieves statistics for a database.
+    pub fn db_stat(&self, db: &Database) -> Result<Stat> {
+        try!(db.assert_same_env(self.env));
+
+        unsafe {
+            let mut raw: ffi::MDB_stat = mem::zeroed();
+            lmdb_call!(ffi::mdb_stat(self.tx.0, db.dbi(), &mut raw));
+            Ok(raw.into())
+        }
+    }
+
+    /// Retrieve the DB flags for a database handle.
+    pub fn db_flags(&self, db: &Database) -> Result<db::Flags> {
+        try!(db.assert_same_env(self.env));
+
+        let mut raw: c_uint = 0;
+        unsafe {
+            lmdb_call!(ffi::mdb_dbi_flags(self.tx.0, db.dbi(), &mut raw));
+        }
+        Ok(db::Flags::from_bits_truncate(raw))
+    }
+
+    fn assert_sensible_cursor<'a>(&self, cursor: &Cursor<'env,'a>)
+                                  -> Result<()> {
+        if self as *const ConstTransaction<'env> !=
+            cursor::txn_ref(cursor) as *const ConstTransaction<'env>
+        {
+            Err(Error { code: error::MISMATCH })
+        } else {
+            Ok(())
+        }
+    }
+}
+
+// Internally used by other parts of the crate
+pub fn assert_sensible_cursor(access: &ConstAccessor, cursor: &Cursor)
+                              -> Result<()> {
+    access.0.assert_sensible_cursor(cursor)
+}
+
+impl<'env> Deref for ReadTransaction<'env> {
+    type Target = ConstTransaction<'env>;
+
+    fn deref(&self) -> &ConstTransaction<'env> {
+        &self.0
+    }
+}
+
+impl<'env> DerefMut for ReadTransaction<'env> {
+    fn deref_mut(&mut self) -> &mut ConstTransaction<'env> {
+        &mut self.0
+    }
+}
+
+impl<'env> ReadTransaction<'env> {
+    /// Opens a new, read-only transaction within the given environment.
+    ///
+    /// ## Note
+    ///
+    /// A transaction and its cursors must only be used by a single thread
+    /// (enforced by the rust compiler), and a thread may only have a single
+    /// transaction at a time. If `NOTLS` is in use, this does not apply to
+    /// read-only transactions. Attempting to open a read-only transaction
+    /// while the current thread holds a read-write transaction will deadlock.
+    pub fn new(env: &'env Environment) -> Result<Self> {
+        Ok(ReadTransaction(try!(ConstTransaction::new(
+            env, None, ffi::MDB_RDONLY))))
+    }
+
+    /// Opens a new, read-only transaction as a child transaction of the given
+    /// parent. While the new transaction exists, no operations may be
+    /// performed on the parent or any of its cursors. (These bindings are
+    /// actually stricter, and do not permit cursors or other references into
+    /// the parent to coexist with the child transaction.)
+    ///
+    /// ## Note
+    ///
+    /// A transaction and its cursors must only be used by a single thread
+    /// (enforced by the rust compiler).
+    pub fn new_child(parent: &'env mut ConstTransaction<'env>)
+                     -> Result<Self> {
+        Ok(ReadTransaction(try!(ConstTransaction::new(
+            parent.env, Some(parent), ffi::MDB_RDONLY))))
+    }
+
+    /// Dissociates the given cursor from this transaction and its database,
+    /// returning a `StaleCursor` which can be reused later.
+    ///
+    /// This only fails if `cursor` does not belong to this transaction.
+    pub fn dissoc_cursor<'txn,'db>(&self, cursor: Cursor<'txn,'db>)
+                                   -> Result<StaleCursor<'db>>
+    where 'env: 'db {
+        try!(self.assert_sensible_cursor(&cursor));
+        Ok(cursor::to_stale(cursor, self.env))
+    }
+
+    /// Associates a saved read-only with this transaction.
+    ///
+    /// The cursor will be rebound to this transaction, but will continue using
+    /// the same database that it was previously.
+    pub fn assoc_cursor<'txn,'db>(&'txn self, cursor: StaleCursor<'db>)
+                                  -> Result<Cursor<'txn,'db>> {
+        if self.env as *const Environment !=
+            cursor::env_ref(&cursor) as *const Environment
+        {
+            return Err(Error { code: error::MISMATCH });
+        }
+
+        unsafe {
+            lmdb_call!(ffi::mdb_cursor_renew(
+                self.tx.0, cursor::stale_cursor_ptr(&cursor)));
+        }
+        Ok(cursor::from_stale(cursor, self))
+    }
+
+    /// Resets this transaction, releasing most of its resources but allowing
+    /// it to be quickly renewed if desired.
+    pub fn reset(self) -> ResetTransaction<'env> {
+        unsafe { ffi::mdb_txn_reset(self.0.tx.0); }
+        ResetTransaction(self)
+    }
+}
+
+impl<'env> ResetTransaction<'env> {
+    /// Renews this read-only transaction, making it available for more
+    /// reading.
+    pub fn renew(self) -> Result<ReadTransaction<'env>> {
+        unsafe { lmdb_call!(ffi::mdb_txn_renew((self.0).0.tx.0)); }
+        self.0.has_yielded_accessor.set(false);
+        Ok(self.0)
+    }
+}
+
+impl<'env> Deref for WriteTransaction<'env> {
+    type Target = ConstTransaction<'env>;
+
+
+    fn deref(&self) -> &ConstTransaction<'env> {
+        &self.0
+    }
+}
+
+impl<'env> DerefMut for WriteTransaction<'env> {
+    fn deref_mut(&mut self) -> &mut ConstTransaction<'env> {
+        &mut self.0
+    }
+}
+
+impl<'env> WriteTransaction<'env> {
+    /// Creates a new, read-write transaction in the given environment.
+    ///
+    /// ## Note
+    ///
+    /// A transaction and its cursors must only be used by a single thread
+    /// (enforced by the rust compiler), and a thread may only have a single
+    /// read-write transaction at a time (even if `NOTLS` is in use --- trying
+    /// to start two top-level read-write transactions on the same thread will
+    /// deadlock).
+    pub fn new(env: &'env Environment) -> Result<Self> {
+        Ok(WriteTransaction(try!(ConstTransaction::new(env, None, 0))))
+    }
+
+    /// Opens a new, read-write transaction as a child transaction of the given
+    /// parent. While the new transaction exists, no operations may be
+    /// performed on the parent or any of its cursors. (These bindings are
+    /// actually stricter, and do not permit cursors or other references into
+    /// the parent to coexist with the child transaction.)
+    ///
+    /// ## Note
+    ///
+    /// A transaction and its cursors must only be used by a single thread
+    /// (enforced by the rust compiler).
+    pub fn new_child(parent: &'env mut WriteTransaction<'env>)
+                     -> Result<Self> {
+        let env = parent.0.env;
+        Ok(WriteTransaction(try!(ConstTransaction::new(
+            env, Some(&mut*parent), 0))))
+    }
+
+    /// Commits this write transaction.
+    pub fn commit(mut self) -> Result<()> {
+        unsafe {
+            self.0.tx.commit()
+        }
+    }
+
+    /// Returns a read/write accessor on this transaction.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if called more than once on the same transaction.
+    pub fn access(&self) -> WriteAccessor {
+        WriteAccessor(self.0.access())
+    }
+}
+
+impl<'txn> ConstAccessor<'txn> {
+    /// Get items from a database.
+    ///
+    /// This function retrieves key/data pairs from the database. A reference
+    /// to the data associated with the given key is returned. If the database
+    /// supports duplicate keys (`DUPSORT`) then the first data item for the
+    /// key will be returned. Retrieval of other items requires the use of
+    /// cursoring.
+    ///
+    /// The returned memory is valid until the next mutation through the
+    /// transaction or the end of the transaction (both are enforced through
+    /// the borrow checker).
+    pub fn get<K : AsLmdbBytes + ?Sized, V : FromLmdbBytes + ?Sized>(
+        &self, db: &Database, key: &K) -> Result<&V>
+    {
+        try!(db.assert_same_env(self.env()));
+
+        let mut mv_key = as_val(key);
+        let mut out_val = EMPTY_VAL;
+        unsafe {
+            lmdb_call!(ffi::mdb_get(
+                self.txptr(), db.dbi(), &mut mv_key, &mut out_val));
+        }
+
+        from_val(self, &out_val)
+    }
+
+    fn txptr(&self) -> *mut ffi::MDB_txn {
+        self.0.tx.0
+    }
+
+    fn env(&self) -> &Environment {
+        self.0.env
+    }
+}
+
+impl<'txn> Deref for WriteAccessor<'txn> {
+    type Target = ConstAccessor<'txn>;
+
+    fn deref(&self) -> &ConstAccessor<'txn> {
+        &self.0
+    }
+}
+
+impl<'txn> WriteAccessor<'txn> {
+    /// Store items into a database.
+    ///
+    /// This function stores key/data pairs in the database. The default
+    /// behavior is to enter the new key/data pair, replacing any previously
+    /// existing key if duplicates are disallowed, or adding a duplicate data
+    /// item if duplicates are allowed (`DUPSORT`).
+    pub fn put<K : AsLmdbBytes + ?Sized, V : AsLmdbBytes + ?Sized>(
+        &mut self, db: &Database, key: &K, value: &V,
+        flags: put::Flags) -> Result<()>
+    {
+        try!(db.assert_same_env(self.env()));
+
+        let mut mv_key = as_val(key);
+        let mut mv_val = as_val(value);
+        unsafe {
+            lmdb_call!(ffi::mdb_put(
+                self.txptr(), db.dbi(), &mut mv_key, &mut mv_val,
+                flags.bits()));
+        }
+        Ok(())
+    }
+
+    /// Store items into a database.
+    ///
+    /// This function stores key/data pairs in the database. The default
+    /// behavior is to enter the new key/data pair, replacing any previously
+    /// existing key if duplicates are disallowed, or adding a duplicate data
+    /// item if duplicates are allowed (`DUPSORT`).
+    ///
+    /// Unlike `put()`, this does not take a value. Instead, it reserves space
+    /// for the value (equal to the size of `V`) and then returns a mutable
+    /// reference to it. Be aware that the `FromReservedLmdbBytes` conversion
+    /// will be invoked on whatever memory happens to be at the destination
+    /// location.
+    pub fn put_reserve<K : AsLmdbBytes + ?Sized,
+                       V : FromReservedLmdbBytes + Sized>(
+        &mut self, db: &Database, key: &K, flags: put::Flags) -> Result<&mut V>
+    {
+        try!(db.assert_same_env(self.env()));
+
+        let mut mv_key = as_val(key);
+        let mut out_val = EMPTY_VAL;
+        out_val.mv_size = mem::size_of::<V>();
+        unsafe {
+            lmdb_call!(ffi::mdb_put(
+                self.txptr(), db.dbi(), &mut mv_key, &mut out_val,
+                flags.bits() | ffi::MDB_RESERVE));
+        }
+
+        unsafe {
+            Ok(from_reserved(self, &out_val))
+        }
+    }
+
+    /// Delete items from a database by key.
+    ///
+    /// This function removes key/data pairs from the database. All values
+    /// whose key matches `key` are deleted, including in the case of
+    /// `DUPSORT`. This function will return `NOTFOUND` if the specified
+    /// key is not in the database.
+    pub fn del_key<K : AsLmdbBytes + ?Sized>(
+        &mut self, db: &Database, key: &K) -> Result<()>
+    {
+        try!(db.assert_same_env(self.env()));
+
+        let mut mv_key = as_val(key);
+        unsafe {
+            lmdb_call!(ffi::mdb_del(
+                self.txptr(), db.dbi(), &mut mv_key, ptr::null_mut()));
+        }
+
+        Ok(())
+    }
+
+    /// Delete items from a database by key and value.
+    ///
+    /// This function removes key/data pairs from the database. If the database
+    /// does not support sorted duplicate data items (`DUPSORT`) the `val`
+    /// parameter is ignored and this call behaves like `del()`. Otherwise, if
+    /// the data item matching both `key` and `val` will be deleted. This
+    /// function will return `NOTFOUND` if the specified key/data pair is not
+    /// in the database.
+    pub fn del_item<K : AsLmdbBytes + ?Sized, V : AsLmdbBytes + ?Sized>(
+        &mut self, db: &Database, key: &K, val: &V) -> Result<()>
+    {
+        try!(db.assert_same_env(self.env()));
+
+        let mut mv_key = as_val(key);
+        let mut mv_val = as_val(val);
+        unsafe {
+            lmdb_call!(ffi::mdb_del(
+                self.txptr(), db.dbi(), &mut mv_key, &mut mv_val));
+        }
+
+        Ok(())
+    }
+
+    /// Completely clears the content of the given database.
+    pub fn clear_db(&mut self, db: &Database) -> Result<()> {
+        try!(db.assert_same_env(self.env()));
+        unsafe {
+            lmdb_call!(ffi::mdb_drop(self.txptr(), db.dbi(), 0));
+        }
+        Ok(())
+    }
+}
