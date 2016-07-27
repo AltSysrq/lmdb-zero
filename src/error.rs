@@ -147,3 +147,27 @@ impl From<NulError> for Error {
         Error { code: NULSTR }
     }
 }
+
+/// Extension methods for LMDB results
+pub trait LmdbResultExt {
+    #[allow(missing_docs)]
+    type Inner;
+
+    /// Lift "not found" errors to `None`.
+    ///
+    /// If `Ok(val)`, return `Ok(Some(val))`. If `Err` but the code is
+    /// `NOTFOUND`, return `Ok(None)`. Otherwise, return self.
+    fn to_opt(self) -> Result<Option<Self::Inner>>;
+}
+
+impl<T> LmdbResultExt for Result<T> {
+    type Inner = T;
+
+    fn to_opt(self) -> Result<Option<T>> {
+        match self {
+            Ok(val) => Ok(Some(val)),
+            Err(error) if NOTFOUND == error.code => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+}

@@ -17,6 +17,8 @@ use std::num::Wrapping;
 use std::slice;
 use std::str;
 
+pub use error::LmdbResultExt;
+
 /// Translates a value into a byte slice to be stored in LMDB.
 ///
 /// This is similar to `AsRef<[u8]>`, but is separate since there are
