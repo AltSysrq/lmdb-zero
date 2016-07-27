@@ -257,6 +257,12 @@ pub fn version() -> (i32, i32, i32) {
     (major as i32, minor as i32, rev as i32)
 }
 
+/// Empty type used to indicate "don't care" when reading values from LMDB.
+///
+/// `FromLmdbBytes` is implemented for this type by simply returning its only
+/// value without inspecting anything.
+pub struct Ignore;
+
 mod mdb_vals;
 
 pub mod error;

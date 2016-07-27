@@ -17,6 +17,8 @@ use std::num::Wrapping;
 use std::slice;
 use std::str;
 
+use ::Ignore;
+
 pub use error::LmdbResultExt;
 
 /// Translates a value into a byte slice to be stored in LMDB.
@@ -250,5 +252,13 @@ impl FromLmdbBytes for str {
 impl<V : LmdbRaw> AsLmdbBytes for Vec<V> {
     fn as_lmdb_bytes(&self) -> &[u8] {
         &self[..].as_lmdb_bytes()
+    }
+}
+
+static IGNORE: Ignore = Ignore;
+
+impl FromLmdbBytes for Ignore {
+    fn from_lmdb_bytes(_: &[u8]) -> Option<&Ignore> {
+        Some(&IGNORE)
     }
 }
