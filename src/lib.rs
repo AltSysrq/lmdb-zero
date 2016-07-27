@@ -186,12 +186,40 @@
 //! However, if these assumptions are met, it should be impossible to cause
 //! memory unsafety (eg, aliasing mutable references; dangling pointers; buffer
 //! under/overflows) by use of lmdb-zero's safe API.
+//!
+//! # Unavailable LMDB APIs
+//!
+//! - `mdb_env_copy`, `mdb_env_copyfd`: Only the `2`-suffixed versions that
+//! take flags are exposed.
+//!
+//! - `mdb_env_set_userctx`, `mdb_env_get_userctx`: Not generally useful for
+//! Rust; unclear how ownership would be expressed; would likely end up forcing
+//! an almost-never-used generic arg on `Environment` on everyone.
+//!
+//! - `mdb_env_set_assert`: Does not seem useful enough to expose.
+//!
+//! - `mdb_txn_env`, `mdb_cursor_txn`, `mdb_cursor_dbi`: Would allow violating
+//! borrow semantics.
+//!
+//! - `mdb_cmp`, `mdb_dcmp`: Doesn't seem useful; this would basically be a
+//! reinterpret cast from the input values to whatever the table comparator
+//! expects and then invoking the `Ord` implementation. If the types match,
+//! this is strictly inferior to just using `Ord` directly; if they don't, it
+//! at best is obfuscating, and at worst completely broken.
+//!
+//! - `mdb_set_relfunc`, `mdb_set_relctx`: Currently a noop in LMDB. Even if it
+//! weren't, it is unlikely that there is any remotely safe or convenient way
+//! to provide an interface to it.
+//!
+//! - `mdb_reader_list`: Doesn't seem useful enough to expose.
 
 #![deny(missing_docs)]
 
 extern crate lmdb_sys as ffi;
 extern crate libc;
 #[macro_use] extern crate bitflags;
+
+use std::ffi::CStr;
 
 pub use ffi::mode_t as FileMode;
 // XXX Supposedly this is redefined to a pointer on Windows, but the FFI
@@ -205,6 +233,28 @@ macro_rules! lmdb_call {
             return Err($crate::Error { code: code });
         }
     } }
+}
+
+/// Returns the LMDB version as a string.
+pub fn version_str() -> &'static str {
+    let mut major: libc::c_int = 0;
+    let mut minor: libc::c_int = 0;
+    let mut rev: libc::c_int = 0;
+    unsafe {
+        CStr::from_ptr(ffi::mdb_version(&mut major, &mut minor, &mut rev))
+            .to_str().unwrap_or("(invalid)")
+    }
+}
+
+/// Returns the LMDB version as (major, minor, revision).
+pub fn version() -> (i32, i32, i32) {
+    let mut major: libc::c_int = 0;
+    let mut minor: libc::c_int = 0;
+    let mut rev: libc::c_int = 0;
+    unsafe {
+        ffi::mdb_version(&mut major, &mut minor, &mut rev);
+    }
+    (major as i32, minor as i32, rev as i32)
 }
 
 mod mdb_vals;
