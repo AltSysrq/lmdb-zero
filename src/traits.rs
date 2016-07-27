@@ -13,6 +13,7 @@
 
 use std::ffi::CStr;
 use std::mem;
+use std::num::Wrapping;
 use std::slice;
 use std::str;
 
@@ -154,6 +155,7 @@ unsafe impl<V: LmdbRaw> LmdbRaw for [V;29] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;30] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;31] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;32] { }
+unsafe impl<V: LmdbRaw> LmdbRaw for Wrapping<V> { }
 
 unsafe impl LmdbRaw for () { }
 
