@@ -49,7 +49,7 @@ pub trait AsLmdbBytes {
 /// Blanket implementations are provided for `LmdbRaw` and slices of
 /// `LmdbRaw` things.
 ///
-/// _This is not a general-purpose deserialisation mechanism._ There is now
+/// _This is not a general-purpose deserialisation mechanism._ There is no
 /// way to use this trait to read values in any format other than how they
 /// are natively represented in memory. The only control is that outright
 /// invalid values can be rejected so as to avoid undefined behaviour from,
