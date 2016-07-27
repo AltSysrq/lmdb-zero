@@ -13,5 +13,6 @@ The main issue with the existing crates is that they try to abstract some
 properties of LMDB away, and as a result are not able to expose some of LMDB's
 functionality, and in some cases compromise safety.
 
-`lmdb-zero` is instead a 1:1 mapping of the raw API, mainly providing RAII
-constructs and integration into Rust's borrow checker to ensure safety.
+`lmdb-zero` is instead as much as possible a 1:1 mapping of the raw API, mainly
+providing RAII constructs and integration into Rust's borrow checker to ensure
+safety.
