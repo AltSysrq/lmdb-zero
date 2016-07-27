@@ -31,6 +31,8 @@ pub fn as_val<V : AsLmdbBytes + ?Sized>(v: &V) -> ffi::MDB_val {
 }
 
 pub fn mdb_val_as_bytes<'a,O>(_o: &'a O, val: &ffi::MDB_val) -> &'a[u8] {
+    debug_assert!(!val.mv_data.is_null(), "MDB_val ptr is NULL");
+
     unsafe {
         slice::from_raw_parts(
             mem::transmute(val.mv_data), val.mv_size as usize)
@@ -44,7 +46,7 @@ pub fn from_val<'a, O, V : FromLmdbBytes + ?Sized>(
     V::from_lmdb_bytes(bytes).ok_or(Error { code: error::VAL_REJECTED })
 }
 
-pub unsafe fn from_reserved<'a, O, V : FromReservedLmdbBytes>(
+pub unsafe fn from_reserved<'a, O, V : FromReservedLmdbBytes + ?Sized>(
     _owner: &'a O, val: &ffi::MDB_val) -> &'a mut V
 {
     let bytes = slice::from_raw_parts_mut(

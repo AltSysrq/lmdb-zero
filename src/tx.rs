@@ -759,25 +759,128 @@ impl<'txn> WriteAccessor<'txn> {
     /// reference to it. Be aware that the `FromReservedLmdbBytes` conversion
     /// will be invoked on whatever memory happens to be at the destination
     /// location.
-    // TODO We may want to add an (unsafe) variant which takes an explicit size
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// #[repr(C)] #[derive(Clone,Copy,Debug,PartialEq,Eq)]
+    /// struct MyStruct {
+    ///   x: i32,
+    ///   y: i32,
+    /// }
+    /// unsafe impl lmdb::traits::LmdbRaw for MyStruct { }
+    ///
+    /// # fn main() {
+    /// # let env = create_env();
+    /// # let db = lmdb::Database::open(
+    /// #   &env, None, &lmdb::DatabaseOptions::defaults())
+    /// #   .unwrap();
+    /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+    /// {
+    ///   let mut access = txn.access();
+    ///   {
+    ///     let dst: &mut MyStruct = access.put_reserve(
+    ///       &db, "foo", lmdb::put::Flags::empty()).unwrap();
+    ///     // Writing to `dst` actually writes directly into the database.
+    ///     dst.x = 42;
+    ///     dst.y = 56;
+    ///     // Drop `dst` so we can use `access` again
+    ///   }
+    ///   assert_eq!(&MyStruct { x: 42, y: 56 },
+    ///              access.get(&db, "foo").unwrap());
+    /// }
+    /// txn.commit().unwrap();
+    /// # }
+    /// ```
     pub fn put_reserve<K : AsLmdbBytes + ?Sized,
                        V : FromReservedLmdbBytes + Sized>(
         &mut self, db: &Database, key: &K, flags: put::Flags) -> Result<&mut V>
+    {
+        unsafe {
+            self.put_reserve_unsized(db, key, mem::size_of::<V>(), flags)
+        }
+    }
+
+    /// Store items into a database.
+    ///
+    /// This function stores key/data pairs in the database. The default
+    /// behavior is to enter the new key/data pair, replacing any previously
+    /// existing key if duplicates are disallowed, or adding a duplicate data
+    /// item if duplicates are allowed (`DUPSORT`).
+    ///
+    /// Unlike `put()`, this does not take a value. Instead, it reserves space
+    /// for the value (equal to an array of `count` objects of size `V`) and
+    /// then returns a mutable reference to it. Be aware that the content of
+    /// the returned slice is simply whatever happens to be in the destination
+    /// memory at the time of this call.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// # let db = lmdb::Database::open(
+    /// #   &env, None, &lmdb::DatabaseOptions::defaults())
+    /// #   .unwrap();
+    /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+    /// {
+    ///   let mut access = txn.access();
+    ///   {
+    ///     let bytes: &mut [u8] = access.put_reserve_array(
+    ///       &db, "foo", 4, lmdb::put::Flags::empty()).unwrap();
+    ///     // More realistically, one could zero-copy data from a file/socket
+    ///     // into `bytes`, for example.
+    ///     bytes[0] = b'b'; bytes[1] = b'y';
+    ///     bytes[2] = b't'; bytes[3] = b'e';
+    ///   }
+    ///   assert_eq!("byte", access.get::<str,str>(&db, "foo").unwrap());
+    /// }
+    /// txn.commit().unwrap();
+    /// # }
+    /// ```
+    pub fn put_reserve_array<K : AsLmdbBytes + ?Sized, V : LmdbRaw>(
+        &mut self, db: &Database, key: &K, count: usize, flags: put::Flags)
+        -> Result<&mut [V]>
+    {
+        unsafe {
+            self.put_reserve_unsized(
+                db, key, mem::size_of::<V>() * count, flags)
+        }
+    }
+
+    /// Store items into a database.
+    ///
+    /// This function stores key/data pairs in the database. The default
+    /// behavior is to enter the new key/data pair, replacing any previously
+    /// existing key if duplicates are disallowed, or adding a duplicate data
+    /// item if duplicates are allowed (`DUPSORT`).
+    ///
+    /// Unlike `put()`, this does not take a value. Instead, it reserves space
+    /// equal to `size` bytes for the value and then returns a mutable
+    /// reference to it. Be aware that the `FromReservedLmdbBytes` conversion
+    /// will be invoked on whatever memory happens to be at the destination
+    /// location.
+    ///
+    /// ## Unsafety
+    ///
+    /// The caller must ensure that `size` is a valid size for `V`.
+    pub unsafe fn put_reserve_unsized<K : AsLmdbBytes + ?Sized,
+                                      V : FromReservedLmdbBytes + ?Sized>(
+        &mut self, db: &Database, key: &K, size: usize, flags: put::Flags)
+        -> Result<&mut V>
     {
         try!(db.assert_same_env(self.env()));
 
         let mut mv_key = as_val(key);
         let mut out_val = EMPTY_VAL;
-        out_val.mv_size = mem::size_of::<V>();
-        unsafe {
-            lmdb_call!(ffi::mdb_put(
-                self.txptr(), db.dbi(), &mut mv_key, &mut out_val,
-                flags.bits() | ffi::MDB_RESERVE));
-        }
+        out_val.mv_size = size;
+        lmdb_call!(ffi::mdb_put(
+            self.txptr(), db.dbi(), &mut mv_key, &mut out_val,
+            flags.bits() | ffi::MDB_RESERVE));
 
-        unsafe {
-            Ok(from_reserved(self, &out_val))
-        }
+        Ok(from_reserved(self, &out_val))
     }
 
     /// Delete items from a database by key.
@@ -786,6 +889,29 @@ impl<'txn> WriteAccessor<'txn> {
     /// whose key matches `key` are deleted, including in the case of
     /// `DUPSORT`. This function will return `NOTFOUND` if the specified
     /// key is not in the database.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// let db = lmdb::Database::open(
+    ///   &env, Some("example"), &lmdb::DatabaseOptions::new(
+    ///     lmdb::db::CREATE | lmdb::db::DUPSORT))
+    ///   .unwrap();
+    /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+    /// {
+    ///   let mut access = txn.access();
+    ///   access.put(&db, "Fruit", "Apple", lmdb::put::Flags::empty()).unwrap();
+    ///   access.put(&db, "Fruit", "Orange", lmdb::put::Flags::empty()).unwrap();
+    ///   assert_eq!("Apple", access.get::<str,str>(&db, "Fruit").unwrap());
+    ///   access.del_key(&db, "Fruit").unwrap();
+    ///   assert!(access.get::<str,str>(&db, "Fruit").is_err());
+    /// }
+    /// txn.commit().unwrap();
+    /// # }
+    /// ```
     pub fn del_key<K : AsLmdbBytes + ?Sized>(
         &mut self, db: &Database, key: &K) -> Result<()>
     {
@@ -808,6 +934,29 @@ impl<'txn> WriteAccessor<'txn> {
     /// the data item matching both `key` and `val` will be deleted. This
     /// function will return `NOTFOUND` if the specified key/data pair is not
     /// in the database.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// let db = lmdb::Database::open(
+    ///   &env, Some("example"), &lmdb::DatabaseOptions::new(
+    ///     lmdb::db::CREATE | lmdb::db::DUPSORT))
+    ///   .unwrap();
+    /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+    /// {
+    ///   let mut access = txn.access();
+    ///   access.put(&db, "Fruit", "Apple", lmdb::put::Flags::empty()).unwrap();
+    ///   access.put(&db, "Fruit", "Orange", lmdb::put::Flags::empty()).unwrap();
+    ///   assert_eq!("Apple", access.get::<str,str>(&db, "Fruit").unwrap());
+    ///   access.del_item(&db, "Fruit", "Apple").unwrap();
+    ///   assert_eq!("Orange", access.get::<str,str>(&db, "Fruit").unwrap());
+    /// }
+    /// txn.commit().unwrap();
+    /// # }
+    /// ```
     pub fn del_item<K : AsLmdbBytes + ?Sized, V : AsLmdbBytes + ?Sized>(
         &mut self, db: &Database, key: &K, val: &V) -> Result<()>
     {
@@ -824,6 +973,31 @@ impl<'txn> WriteAccessor<'txn> {
     }
 
     /// Completely clears the content of the given database.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// # let db = lmdb::Database::open(
+    /// #   &env, None, &lmdb::DatabaseOptions::defaults())
+    /// #   .unwrap();
+    /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+    /// {
+    ///   let mut access = txn.access();
+    ///   let f = lmdb::put::Flags::empty();
+    ///   access.put(&db, "Germany", "Berlin", f).unwrap();
+    ///   access.put(&db, "France", "Paris", f).unwrap();
+    ///   access.put(&db, "Latvia", "Rīga", f).unwrap();
+    ///   assert_eq!(3, txn.db_stat(&db).unwrap().entries);
+    ///
+    ///   access.clear_db(&db).unwrap();
+    ///   assert_eq!(0, txn.db_stat(&db).unwrap().entries);
+    /// }
+    /// txn.commit().unwrap();
+    /// # }
+    /// ```
     pub fn clear_db(&mut self, db: &Database) -> Result<()> {
         try!(db.assert_same_env(self.env()));
         unsafe {

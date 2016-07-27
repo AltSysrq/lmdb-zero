@@ -110,6 +110,18 @@ macro_rules! cursor_get_0_kv {
     }
 }
 
+macro_rules! cursor_get_0_v {
+    ($(#[$doc:meta])* fn $method:ident, $op:path) => {
+        $(#[$doc])*
+        pub fn $method<'access, V : FromLmdbBytes + ?Sized>
+            (&mut self, access: &'access ConstAccessor)
+             -> Result<(&'access V)>
+        {
+            self.get_0_v(access, $op)
+        }
+    }
+}
+
 impl<'txn,'db> Cursor<'txn,'db> {
     fn get_0_kv<'access, K : FromLmdbBytes + ?Sized,
                 V : FromLmdbBytes + ?Sized>
@@ -219,17 +231,63 @@ impl<'txn,'db> Cursor<'txn,'db> {
         ///
         /// This corresponds to the `mdb_cursor_get` function with the
         /// `MDB_FIRST` operation.
+        ///
+        /// ## Example
+        ///
+        /// ```
+        /// # include!("src/example_helpers.rs");
+        /// # fn main() {
+        /// # let env = create_env();
+        /// # let db = dupdb(&env);
+        /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+        /// {
+        ///   let mut access = txn.access();
+        ///   let f = lmdb::put::Flags::empty();
+        ///   access.put(&db, "Germany", "Berlin", f).unwrap();
+        ///   access.put(&db, "France", "Paris", f).unwrap();
+        ///   access.put(&db, "Latvia", "Rīga", f).unwrap();
+        ///
+        ///   let mut cursor = txn.cursor(&db).unwrap();
+        ///   assert_eq!(("France", "Paris"), cursor.first(&access).unwrap());
+        /// }
+        /// txn.commit().unwrap();
+        /// # }
+        /// ```
         fn first, ffi::MDB_FIRST
     }
 
-    cursor_get_0_kv! {
+    cursor_get_0_v! {
         /// Positions the cursor at the first key/value pair whose key is equal
-        /// to the current key.
+        /// to the current key, returning the value of that pair.
         ///
         /// This only makes sense on `DUPSORT` databases.
         ///
         /// This correspnods to the `mdb_cursor_get` function with the
         /// `MDB_FIRST_DUP` operation.
+        ///
+        /// ## Example
+        ///
+        /// ```
+        /// # include!("src/example_helpers.rs");
+        /// # fn main() {
+        /// # let env = create_env();
+        /// # let db = dupdb(&env);
+        /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+        /// {
+        ///   let mut access = txn.access();
+        ///   let f = lmdb::put::Flags::empty();
+        ///   access.put(&db, "Fruit", "Apple", f).unwrap();
+        ///   access.put(&db, "Fruit", "Orange", f).unwrap();
+        ///   access.put(&db, "Fruit", "Durian", f).unwrap();
+        ///   access.put(&db, "Animal", "Badger", f).unwrap();
+        ///
+        ///   let mut cursor = txn.cursor(&db).unwrap();
+        ///   assert_eq!(("Fruit", "Orange"), cursor.last(&access).unwrap());
+        ///   assert_eq!("Apple", cursor.first_dup::<str>(&access).unwrap());
+        /// }
+        /// txn.commit().unwrap();
+        /// # }
+        /// ```
         fn first_dup, ffi::MDB_FIRST_DUP
     }
 
@@ -239,13 +297,40 @@ impl<'txn,'db> Cursor<'txn,'db> {
     ///
     /// This corresponds to the `mdb_cursor_get` function with the
     /// `MDB_GET_BOTH` operation.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// # let db = dupdb(&env);
+    /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+    /// {
+    ///   let mut access = txn.access();
+    ///   let f = lmdb::put::Flags::empty();
+    ///   access.put(&db, "Fruit", "Apple", f).unwrap();
+    ///   access.put(&db, "Fruit", "Orange", f).unwrap();
+    ///   access.put(&db, "Fruit", "Durian", f).unwrap();
+    ///   access.put(&db, "Animal", "Badger", f).unwrap();
+    ///
+    ///   let mut cursor = txn.cursor(&db).unwrap();
+    ///   cursor.seek_kv("Fruit", "Durian").unwrap();
+    ///   assert_eq!(("Fruit", "Orange"), cursor.next(&access).unwrap());
+    ///   assert!(cursor.seek_kv("Fruit", "Lychee").is_err());
+    /// }
+    /// txn.commit().unwrap();
+    /// # }
+    /// ```
     pub fn seek_kv<K : AsLmdbBytes + ?Sized, V : AsLmdbBytes + ?Sized>
         (&mut self, key: &K, val: &V) -> Result<()>
     {
         self.get_kv_0(key, val, ffi::MDB_GET_BOTH)
     }
 
-    /// Positions the cursor at the given key and the "nearest" value to `val`.
+    /// Positions the cursor at the given key and the "nearest" value to `val`,
+    /// that is, the first (according to sorting) item whose key equals `key`
+    /// and whose value is greater than or equal to `val`.
     ///
     /// The actual value found is returned.
     ///
@@ -253,6 +338,39 @@ impl<'txn,'db> Cursor<'txn,'db> {
     ///
     /// This corresponds to the `mdb_cursor_get` function with the
     /// `MDB_GET_BOTH_RANGE` operation.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// # let db = dupdb(&env);
+    /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+    /// {
+    ///   let mut access = txn.access();
+    ///   let f = lmdb::put::Flags::empty();
+    ///   access.put(&db, "Animal", "Badger", f).unwrap();
+    ///   access.put(&db, "Fruit", "Banana", f).unwrap();
+    ///   access.put(&db, "Fruit", "Orange", f).unwrap();
+    ///   access.put(&db, "Fruit", "Durian", f).unwrap();
+    ///   access.put(&db, "Veggie", "Carrot", f).unwrap();
+    ///
+    ///   let mut cursor = txn.cursor(&db).unwrap();
+    ///   assert_eq!("Durian", cursor.seek_k_nearest_v::<str,str>(
+    ///     &access, "Fruit", "Durian").unwrap());
+    ///   assert_eq!("Orange", cursor.seek_k_nearest_v::<str,str>(
+    ///     &access, "Fruit", "Lychee").unwrap());
+    ///   assert!(cursor.seek_k_nearest_v::<str,str>(
+    ///     &access, "Fruit", "Watermelon").is_err());
+    ///   assert_eq!("Banana", cursor.seek_k_nearest_v::<str,str>(
+    ///     &access, "Fruit", "Apple").unwrap());
+    ///   assert!(cursor.seek_k_nearest_v::<str,str>(
+    ///     &access, "Plant", "Tree").is_err());
+    /// }
+    /// txn.commit().unwrap();
+    /// # }
+    /// ```
     pub fn seek_k_nearest_v<'access, K : AsLmdbBytes + ?Sized,
                             V : AsLmdbBytes + FromLmdbBytes + ?Sized>
         (&mut self, access: &'access ConstAccessor,
@@ -266,40 +384,61 @@ impl<'txn,'db> Cursor<'txn,'db> {
         ///
         /// This corresponds to the `mdb_cursor_get` function with the
         /// `MDB_CURRENT` operation.
+        ///
+        /// ## Example
+        ///
+        /// ```
+        /// # include!("src/example_helpers.rs");
+        /// # fn main() {
+        /// # let env = create_env();
+        /// # let db = dupdb(&env);
+        /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+        /// {
+        ///   let mut access = txn.access();
+        ///   let f = lmdb::put::Flags::empty();
+        ///   access.put(&db, "Germany", "Berlin", f).unwrap();
+        ///   access.put(&db, "France", "Paris", f).unwrap();
+        ///   access.put(&db, "Latvia", "Rīga", f).unwrap();
+        ///
+        ///   let mut cursor = txn.cursor(&db).unwrap();
+        ///   cursor.seek_k::<str,str>(&access, "Latvia").unwrap();
+        ///   assert_eq!(("Latvia", "Rīga"), cursor.get_current(&access).unwrap());
+        /// }
+        /// txn.commit().unwrap();
+        /// # }
+        /// ```
         fn get_current, ffi::MDB_GET_CURRENT
     }
 
-    /// Returns as many items as possible with the current key from the
-    /// current cursor position.
-    ///
-    /// The cursor is advanced so that `next_multiple()` returns the next
-    /// group of items, if any. Note that this does _not_ return the actual
-    /// key (which LMDB itself does not return, contrary to documentation).
-    ///
-    /// The easiest way to use this is for `V` to be a slice of `LmdbRaw`
-    /// types.
-    ///
-    /// This only makes sense on `DUPSORT` databases.
-    ///
-    /// This corresponds to the `mdb_cursor_get` function with the
-    /// `MDB_GET_MULTIPLE` operation.
-    pub fn get_multiple<'access, V : FromLmdbBytes + ?Sized>(
-        &mut self, access: &'access ConstAccessor)
-        -> Result<&'access V>
-    {
-        self.get_0_v(access, ffi::MDB_GET_MULTIPLE)
+    cursor_get_0_v! {
+        /// Returns as many items as possible with the current key from the
+        /// current cursor position.
+        ///
+        /// The cursor is advanced so that `next_multiple()` returns the next
+        /// group of items, if any. Note that this does _not_ return the actual
+        /// key (which LMDB itself does not return, contrary to documentation).
+        ///
+        /// The easiest way to use this is for `V` to be a slice of `LmdbRaw`
+        /// types.
+        ///
+        /// This only makes sense on `DUPSORT` databases with `DUPFIXED` set.
+        ///
+        /// This corresponds to the `mdb_cursor_get` function with the
+        /// `MDB_GET_MULTIPLE` operation.
+        ///
+        /// See `lmdb_zero::db::DUPFIXED` for examples of usage.
+        fn get_multiple, ffi::MDB_GET_MULTIPLE
     }
 
-    /// Continues fetching items from a cursor positioned by a call to
-    /// `get_multiple()`.
-    ///
-    /// This corresponds to the `mdb_cursor_get` function with the
-    /// `MDB_NEXT_MULTIPLE` operation.
-    pub fn next_multiple<'access, V : FromLmdbBytes + ?Sized>(
-        &mut self, access: &'access ConstAccessor)
-        -> Result<&'access V>
-    {
-        self.get_0_v(access, ffi::MDB_NEXT_MULTIPLE)
+    cursor_get_0_v! {
+        /// Continues fetching items from a cursor positioned by a call to
+        /// `get_multiple()`.
+        ///
+        /// This corresponds to the `mdb_cursor_get` function with the
+        /// `MDB_NEXT_MULTIPLE` operation.
+        ///
+        /// See `lmdb_zero::db::DUPFIXED` for examples of usage.
+        fn next_multiple, ffi::MDB_NEXT_MULTIPLE
     }
 
     cursor_get_0_kv! {
@@ -308,10 +447,32 @@ impl<'txn,'db> Cursor<'txn,'db> {
         ///
         /// This corresponds to the `mdb_cursor_get` function with the
         /// `MDB_LAST` operation.
+        ///
+        /// ## Example
+        ///
+        /// ```
+        /// # include!("src/example_helpers.rs");
+        /// # fn main() {
+        /// # let env = create_env();
+        /// # let db = dupdb(&env);
+        /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+        /// {
+        ///   let mut access = txn.access();
+        ///   let f = lmdb::put::Flags::empty();
+        ///   access.put(&db, "Germany", "Berlin", f).unwrap();
+        ///   access.put(&db, "France", "Paris", f).unwrap();
+        ///   access.put(&db, "Latvia", "Rīga", f).unwrap();
+        ///
+        ///   let mut cursor = txn.cursor(&db).unwrap();
+        ///   assert_eq!(("Latvia", "Rīga"), cursor.last(&access).unwrap());
+        /// }
+        /// txn.commit().unwrap();
+        /// # }
+        /// ```
         fn last, ffi::MDB_LAST
     }
 
-    cursor_get_0_kv! {
+    cursor_get_0_v! {
         /// Positions the cursor at the last key/value pair whose key is equal
         /// to the current key.
         ///
@@ -319,6 +480,31 @@ impl<'txn,'db> Cursor<'txn,'db> {
         ///
         /// This correspnods to the `mdb_cursor_get` function with the
         /// `MDB_LAST_DUP` operation.
+        ///
+        /// ## Example
+        ///
+        /// ```
+        /// # include!("src/example_helpers.rs");
+        /// # fn main() {
+        /// # let env = create_env();
+        /// # let db = dupdb(&env);
+        /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+        /// {
+        ///   let mut access = txn.access();
+        ///   let f = lmdb::put::Flags::empty();
+        ///   access.put(&db, "Fruit", "Apple", f).unwrap();
+        ///   access.put(&db, "Fruit", "Orange", f).unwrap();
+        ///   access.put(&db, "Fruit", "Durian", f).unwrap();
+        ///   access.put(&db, "Animal", "Badger", f).unwrap();
+        ///   access.put(&db, "Veggie", "Carrot", f).unwrap();
+        ///
+        ///   let mut cursor = txn.cursor(&db).unwrap();
+        ///   assert_eq!("Apple", cursor.seek_k::<str,str>(&access, "Fruit").unwrap());
+        ///   assert_eq!("Orange", cursor.last_dup::<str>(&access).unwrap());
+        /// }
+        /// txn.commit().unwrap();
+        /// # }
+        /// ```
         fn last_dup, ffi::MDB_LAST_DUP
     }
 
@@ -330,6 +516,33 @@ impl<'txn,'db> Cursor<'txn,'db> {
         ///
         /// This corresponds to the `mdb_cursor_get` function with the
         /// `MDB_NEXT` operation.
+        ///
+        /// ## Example
+        ///
+        /// ```
+        /// # include!("src/example_helpers.rs");
+        /// # fn main() {
+        /// # let env = create_env();
+        /// # let db = dupdb(&env);
+        /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+        /// {
+        ///   let mut access = txn.access();
+        ///   let f = lmdb::put::Flags::empty();
+        ///   access.put(&db, "Fruit", "Apple", f).unwrap();
+        ///   access.put(&db, "Fruit", "Orange", f).unwrap();
+        ///   access.put(&db, "Animal", "Badger", f).unwrap();
+        ///   access.put(&db, "Veggie", "Carrot", f).unwrap();
+        ///
+        ///   let mut cursor = txn.cursor(&db).unwrap();
+        ///   assert_eq!(("Animal", "Badger"), cursor.first(&access).unwrap());
+        ///   assert_eq!(("Fruit", "Apple"), cursor.next(&access).unwrap());
+        ///   assert_eq!(("Fruit", "Orange"), cursor.next(&access).unwrap());
+        ///   assert_eq!(("Veggie", "Carrot"), cursor.next(&access).unwrap());
+        ///   assert!(cursor.next::<str,str>(&access).is_err());
+        /// }
+        /// txn.commit().unwrap();
+        /// # }
+        /// ```
         fn next, ffi::MDB_NEXT
     }
 
@@ -341,7 +554,32 @@ impl<'txn,'db> Cursor<'txn,'db> {
         ///
         /// This corresponds to the `mdb_cursor_get` function with the
         /// `MDB_NEXT_DUP` operation.
-        fn nxt_dup, ffi::MDB_NEXT_DUP
+        ///
+        /// ## Example
+        ///
+        /// ```
+        /// # include!("src/example_helpers.rs");
+        /// # fn main() {
+        /// # let env = create_env();
+        /// # let db = dupdb(&env);
+        /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+        /// {
+        ///   let mut access = txn.access();
+        ///   let f = lmdb::put::Flags::empty();
+        ///   access.put(&db, "Fruit", "Apple", f).unwrap();
+        ///   access.put(&db, "Fruit", "Orange", f).unwrap();
+        ///   access.put(&db, "Animal", "Badger", f).unwrap();
+        ///   access.put(&db, "Veggie", "Carrot", f).unwrap();
+        ///
+        ///   let mut cursor = txn.cursor(&db).unwrap();
+        ///   assert_eq!("Apple", cursor.seek_k::<str,str>(&access, "Fruit").unwrap());
+        ///   assert_eq!(("Fruit", "Orange"), cursor.next_dup(&access).unwrap());
+        ///   assert!(cursor.next_dup::<str,str>(&access).is_err());
+        /// }
+        /// txn.commit().unwrap();
+        /// # }
+        /// ```
+        fn next_dup, ffi::MDB_NEXT_DUP
     }
 
     cursor_get_0_kv! {
@@ -353,6 +591,32 @@ impl<'txn,'db> Cursor<'txn,'db> {
         ///
         /// This corresponds to the `mdb_cursor_get` function with the
         /// `MDB_NEXT_NODUP` operation.
+        ///
+        /// ## Example
+        ///
+        /// ```
+        /// # include!("src/example_helpers.rs");
+        /// # fn main() {
+        /// # let env = create_env();
+        /// # let db = dupdb(&env);
+        /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+        /// {
+        ///   let mut access = txn.access();
+        ///   let f = lmdb::put::Flags::empty();
+        ///   access.put(&db, "Fruit", "Apple", f).unwrap();
+        ///   access.put(&db, "Fruit", "Orange", f).unwrap();
+        ///   access.put(&db, "Animal", "Badger", f).unwrap();
+        ///   access.put(&db, "Veggie", "Carrot", f).unwrap();
+        ///
+        ///   let mut cursor = txn.cursor(&db).unwrap();
+        ///   assert_eq!(("Animal", "Badger"), cursor.first(&access).unwrap());
+        ///   assert_eq!(("Fruit", "Apple"), cursor.next_nodup(&access).unwrap());
+        ///   assert_eq!(("Veggie", "Carrot"), cursor.next_nodup(&access).unwrap());
+        ///   assert!(cursor.next_nodup::<str,str>(&access).is_err());
+        /// }
+        /// txn.commit().unwrap();
+        /// # }
+        /// ```
         fn next_nodup, ffi::MDB_NEXT_NODUP
     }
 
@@ -364,6 +628,33 @@ impl<'txn,'db> Cursor<'txn,'db> {
         ///
         /// This corresponds to the `mdb_cursor_get` function with the
         /// `MDB_PREV` operation.
+        ///
+        /// ## Example
+        ///
+        /// ```
+        /// # include!("src/example_helpers.rs");
+        /// # fn main() {
+        /// # let env = create_env();
+        /// # let db = dupdb(&env);
+        /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+        /// {
+        ///   let mut access = txn.access();
+        ///   let f = lmdb::put::Flags::empty();
+        ///   access.put(&db, "Fruit", "Apple", f).unwrap();
+        ///   access.put(&db, "Fruit", "Orange", f).unwrap();
+        ///   access.put(&db, "Animal", "Badger", f).unwrap();
+        ///   access.put(&db, "Veggie", "Carrot", f).unwrap();
+        ///
+        ///   let mut cursor = txn.cursor(&db).unwrap();
+        ///   assert_eq!(("Veggie", "Carrot"), cursor.last(&access).unwrap());
+        ///   assert_eq!(("Fruit", "Orange"), cursor.prev(&access).unwrap());
+        ///   assert_eq!(("Fruit", "Apple"), cursor.prev(&access).unwrap());
+        ///   assert_eq!(("Animal", "Badger"), cursor.prev(&access).unwrap());
+        ///   assert!(cursor.prev::<str,str>(&access).is_err());
+        /// }
+        /// txn.commit().unwrap();
+        /// # }
+        /// ```
         fn prev, ffi::MDB_PREV
     }
 
@@ -375,6 +666,32 @@ impl<'txn,'db> Cursor<'txn,'db> {
         ///
         /// This corresponds to the `mdb_cursor_get` function with the
         /// `MDB_PREV_DUP` operation.
+        ///
+        /// ## Example
+        ///
+        /// ```
+        /// # include!("src/example_helpers.rs");
+        /// # fn main() {
+        /// # let env = create_env();
+        /// # let db = dupdb(&env);
+        /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+        /// {
+        ///   let mut access = txn.access();
+        ///   let f = lmdb::put::Flags::empty();
+        ///   access.put(&db, "Fruit", "Apple", f).unwrap();
+        ///   access.put(&db, "Fruit", "Orange", f).unwrap();
+        ///   access.put(&db, "Animal", "Badger", f).unwrap();
+        ///   access.put(&db, "Veggie", "Carrot", f).unwrap();
+        ///
+        ///   let mut cursor = txn.cursor(&db).unwrap();
+        ///   assert_eq!("Apple", cursor.seek_k::<str,str>(&access, "Fruit").unwrap());
+        ///   assert_eq!(("Fruit", "Orange"), cursor.next_dup(&access).unwrap());
+        ///   assert_eq!(("Fruit", "Apple"), cursor.prev_dup(&access).unwrap());
+        ///   assert!(cursor.prev_dup::<str,str>(&access).is_err());
+        /// }
+        /// txn.commit().unwrap();
+        /// # }
+        /// ```
         fn prev_dup, ffi::MDB_PREV_DUP
     }
 
@@ -386,6 +703,32 @@ impl<'txn,'db> Cursor<'txn,'db> {
         ///
         /// This corresponds to the `mdb_cursor_get` function with the
         /// `MDB_PREV_NODUP` operation.
+        ///
+        /// ## Example
+        ///
+        /// ```
+        /// # include!("src/example_helpers.rs");
+        /// # fn main() {
+        /// # let env = create_env();
+        /// # let db = dupdb(&env);
+        /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+        /// {
+        ///   let mut access = txn.access();
+        ///   let f = lmdb::put::Flags::empty();
+        ///   access.put(&db, "Fruit", "Apple", f).unwrap();
+        ///   access.put(&db, "Fruit", "Orange", f).unwrap();
+        ///   access.put(&db, "Animal", "Badger", f).unwrap();
+        ///   access.put(&db, "Veggie", "Carrot", f).unwrap();
+        ///
+        ///   let mut cursor = txn.cursor(&db).unwrap();
+        ///   assert_eq!(("Veggie", "Carrot"), cursor.last(&access).unwrap());
+        ///   assert_eq!(("Fruit", "Orange"), cursor.prev_nodup(&access).unwrap());
+        ///   assert_eq!(("Animal", "Badger"), cursor.prev_nodup(&access).unwrap());
+        ///   assert!(cursor.prev_nodup::<str,str>(&access).is_err());
+        /// }
+        /// txn.commit().unwrap();
+        /// # }
+        /// ```
         fn prev_nodup, ffi::MDB_PREV_NODUP
     }
 
@@ -395,6 +738,29 @@ impl<'txn,'db> Cursor<'txn,'db> {
     ///
     /// This corresponds to the `mdb_cursor_get` function with the `MDB_SET`
     /// operation.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// # let db = dupdb(&env);
+    /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+    /// {
+    ///   let mut access = txn.access();
+    ///   let f = lmdb::put::Flags::empty();
+    ///   access.put(&db, "Fruit", "Apple", f).unwrap();
+    ///   access.put(&db, "Fruit", "Orange", f).unwrap();
+    ///   access.put(&db, "Animal", "Badger", f).unwrap();
+    ///   access.put(&db, "Veggie", "Carrot", f).unwrap();
+    ///
+    ///   let mut cursor = txn.cursor(&db).unwrap();
+    ///   assert_eq!("Apple", cursor.seek_k::<str,str>(&access, "Fruit").unwrap());
+    /// }
+    /// txn.commit().unwrap();
+    /// # }
+    /// ```
     pub fn seek_k<'access, K : AsLmdbBytes + ?Sized,
                   V : FromLmdbBytes + ?Sized>
         (&mut self, access: &'access ConstAccessor, key: &K)
@@ -409,6 +775,29 @@ impl<'txn,'db> Cursor<'txn,'db> {
     ///
     /// This corresponds to the `mdb_cursor_get` function with the
     /// `MDB_SET_KEY` operation.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// # let db = dupdb(&env);
+    /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+    /// {
+    ///   let mut access = txn.access();
+    ///   let f = lmdb::put::Flags::empty();
+    ///   access.put(&db, "Fruit", "Apple", f).unwrap();
+    ///   access.put(&db, "Fruit", "Orange", f).unwrap();
+    ///   access.put(&db, "Animal", "Badger", f).unwrap();
+    ///   access.put(&db, "Veggie", "Carrot", f).unwrap();
+    ///
+    ///   let mut cursor = txn.cursor(&db).unwrap();
+    ///   assert_eq!(("Fruit", "Apple"), cursor.seek_k_both(&access, "Fruit").unwrap());
+    /// }
+    /// txn.commit().unwrap();
+    /// # }
+    /// ```
     pub fn seek_k_both<'access, K : AsLmdbBytes + FromLmdbBytes + ?Sized,
                        V : FromLmdbBytes + ?Sized>
         (&mut self, access: &'access ConstAccessor, key: &K)
@@ -424,6 +813,29 @@ impl<'txn,'db> Cursor<'txn,'db> {
     ///
     /// This corresponds to the `mdb_cursor_get` function with the
     /// `MDB_SET_RANGE` operation.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// # let db = dupdb(&env);
+    /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+    /// {
+    ///   let mut access = txn.access();
+    ///   let f = lmdb::put::Flags::empty();
+    ///   access.put(&db, "Fruit", "Apple", f).unwrap();
+    ///   access.put(&db, "Fruit", "Orange", f).unwrap();
+    ///   access.put(&db, "Animal", "Badger", f).unwrap();
+    ///
+    ///   let mut cursor = txn.cursor(&db).unwrap();
+    ///   assert_eq!(("Fruit", "Apple"), cursor.seek_range_k(&access, "Fog").unwrap());
+    ///   assert!(cursor.seek_range_k::<str,str>(&access, "Veggie").is_err());
+    /// }
+    /// txn.commit().unwrap();
+    /// # }
+    /// ```
     pub fn seek_range_k<'access, K : AsLmdbBytes + FromLmdbBytes + ?Sized,
                         V : FromLmdbBytes + ?Sized>
         (&mut self, access: &'access ConstAccessor, key: &K)
@@ -443,6 +855,25 @@ impl<'txn,'db> Cursor<'txn,'db> {
     ///
     /// The cursor is positioned at the new item, or on failure usually near
     /// it.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// # let db = dupdb(&env);
+    /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+    /// {
+    ///   let mut access = txn.access();
+    ///   let f = lmdb::put::Flags::empty();
+    ///   let mut cursor = txn.cursor(&db).unwrap();
+    ///   cursor.put(&mut access, "Germany", "Berlin", f).unwrap();
+    ///   assert_eq!(("Germany", "Berlin"), cursor.get_current(&access).unwrap());
+    /// }
+    /// txn.commit().unwrap();
+    /// # }
+    /// ```
     pub fn put<K : AsLmdbBytes + ?Sized, V : AsLmdbBytes + ?Sized>
         (&mut self, access: &mut WriteAccessor,
          key: &K, val: &V, flags: put::Flags) -> Result<()>
@@ -473,6 +904,26 @@ impl<'txn,'db> Cursor<'txn,'db> {
     ///
     /// The cursor is positioned at the new item, or on failure usually near
     /// it.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// # let db = defdb(&env);
+    /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+    /// {
+    ///   let mut access = txn.access();
+    ///   let f = lmdb::put::Flags::empty();
+    ///   let mut cursor = txn.cursor(&db).unwrap();
+    ///   cursor.put(&mut access, "Fourty-two", &42u32, f).unwrap();
+    ///   cursor.overwrite(&mut access, "Fourty-two", &54u32, f).unwrap();
+    ///   assert_eq!(("Fourty-two", &54u32), cursor.get_current(&access).unwrap());
+    /// }
+    /// txn.commit().unwrap();
+    /// # }
+    /// ```
     pub fn overwrite<K : AsLmdbBytes + ?Sized, V : AsLmdbBytes + ?Sized>
         (&mut self, access: &mut WriteAccessor,
          key: &K, val: &V, flags: put::Flags) -> Result<()>
@@ -494,51 +945,243 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// Reserves space for an entry with the given key and returns a pointer to
     /// that entry.
     ///
+    /// The size of the entry is simply the size of `V`.
+    ///
     /// This cannot be used on a `DUPSORT` database.
     ///
     /// The cursor is positioned at the new item, or on failure usually near
     /// it.
-    pub fn reserve<'access, K : AsLmdbBytes + ?Sized, V : FromReservedLmdbBytes>
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// #[repr(C)] #[derive(Clone,Copy,Debug,PartialEq,Eq)]
+    /// struct MyStruct {
+    ///   x: i32,
+    ///   y: i32,
+    /// }
+    /// unsafe impl lmdb::traits::LmdbRaw for MyStruct { }
+    ///
+    /// # fn main() {
+    /// # let env = create_env();
+    /// # let db = defdb(&env);
+    /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+    /// {
+    ///   let mut access = txn.access();
+    ///   let f = lmdb::put::Flags::empty();
+    ///   let mut cursor = txn.cursor(&db).unwrap();
+    ///   {
+    ///     let v: &mut MyStruct = cursor.reserve(&mut access, "foo", f).unwrap();
+    ///     // Write directly into the database
+    ///     v.x = 42;
+    ///     v.y = 56;
+    ///   }
+    ///
+    ///   assert_eq!(("foo", &MyStruct { x: 42, y: 56 }),
+    ///              cursor.get_current(&access).unwrap());
+    /// }
+    /// txn.commit().unwrap();
+    /// # }
+    /// ```
+    pub fn reserve<'access, K : AsLmdbBytes + ?Sized,
+                   V : FromReservedLmdbBytes + Sized>
         (&mut self, access: &'access mut WriteAccessor,
          key: &K, flags: put::Flags) -> Result<&'access mut V>
+    {
+        unsafe {
+            self.reserve_unsized(access, key, mem::size_of::<V>(), flags)
+        }
+    }
+
+    /// Reserves space for an entry with the given key and returns a pointer to
+    /// an array of values backing that entry.
+    ///
+    /// The size of the entry is simply the size of `V` times the desired
+    /// number of elements.
+    ///
+    /// This cannot be used on a `DUPSORT` database. (Do not confuse with
+    /// `put_multiple`, which does support `DUPSORT` but is not zero-copy.)
+    ///
+    /// The cursor is positioned at the new item, or on failure usually near
+    /// it.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// #[repr(C)] #[derive(Clone,Copy,Debug,PartialEq,Eq)]
+    /// struct MyStruct {
+    ///   x: i32,
+    ///   y: i32,
+    /// }
+    /// unsafe impl lmdb::traits::LmdbRaw for MyStruct { }
+    ///
+    /// # fn main() {
+    /// # let env = create_env();
+    /// # let db = defdb(&env);
+    /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+    /// {
+    ///   let mut access = txn.access();
+    ///   let f = lmdb::put::Flags::empty();
+    ///   let mut cursor = txn.cursor(&db).unwrap();
+    ///   {
+    ///     let v: &mut [u8] = cursor.reserve_array(&mut access, "foo", 4, f).unwrap();
+    ///     // Write directly into the database
+    ///     v[0] = b'b'; v[1] = b'y'; v[2] = b't'; v[3] = b'e';
+    ///   }
+    ///
+    ///   assert_eq!(("foo", "byte"), cursor.get_current(&access).unwrap());
+    /// }
+    /// txn.commit().unwrap();
+    /// # }
+    /// ```
+    pub fn reserve_array<'access, K : AsLmdbBytes + ?Sized,
+                         V : LmdbRaw>
+        (&mut self, access: &'access mut WriteAccessor,
+         key: &K, count: usize, flags: put::Flags)
+         -> Result<&'access mut [V]>
+    {
+        unsafe {
+            self.reserve_unsized(
+                access, key, count * mem::size_of::<V>(), flags)
+        }
+    }
+
+    /// Reserves space for an entry with the given key and returns a pointer to
+    /// that entry.
+    ///
+    /// This cannot be used on a `DUPSORT` database.
+    ///
+    /// The cursor is positioned at the new item, or on failure usually near
+    /// it.
+    ///
+    /// ## Unsafety
+    ///
+    /// The caller must ensure that `size` is a valid size for `V`.
+    pub unsafe fn reserve_unsized<'access, K : AsLmdbBytes + ?Sized,
+                                  V : FromReservedLmdbBytes + ?Sized>
+        (&mut self, access: &'access mut WriteAccessor,
+         key: &K, size: usize, flags: put::Flags) -> Result<&'access mut V>
     {
         try!(assert_sensible_cursor(&*access, self));
 
         let mut mv_key = as_val(key);
         let mut out_val = EMPTY_VAL;
-        out_val.mv_size = mem::size_of::<V>();
+        out_val.mv_size = size;
 
-        unsafe {
-            lmdb_call!(ffi::mdb_cursor_put(
-                self.cursor.0, &mut mv_key, &mut out_val,
-                flags.bits() | ffi::MDB_RESERVE));
+        lmdb_call!(ffi::mdb_cursor_put(
+            self.cursor.0, &mut mv_key, &mut out_val,
+            flags.bits() | ffi::MDB_RESERVE));
 
-            Ok(from_reserved(access, &out_val))
-        }
+        Ok(from_reserved(access, &out_val))
     }
 
     /// Returns a writable reference to the value belonging to the given key in
     /// the database.
     ///
     /// This has all the caveats of both `overwrite()` and `reserve()`.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// # let db = defdb(&env);
+    /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+    /// {
+    ///   let mut access = txn.access();
+    ///   let f = lmdb::put::Flags::empty();
+    ///   let mut cursor = txn.cursor(&db).unwrap();
+    ///   cursor.put(&mut access, "count", &1u32, f).unwrap();
+    ///   {
+    ///     let count: &mut u32 = cursor.overwrite_in_place(
+    ///       &mut access, "count", f).unwrap();
+    ///     // Directly edit the value in the database
+    ///     *count += 1;
+    ///   }
+    ///   assert_eq!(("count", &2u32), cursor.get_current(&access).unwrap());
+    /// }
+    /// txn.commit().unwrap();
+    /// # }
+    /// ```
     pub fn overwrite_in_place<'access, K : AsLmdbBytes + ?Sized,
-                              V : FromReservedLmdbBytes>
+                              V : FromReservedLmdbBytes + Sized>
         (&mut self, access: &'access mut WriteAccessor,
          key: &K, flags: put::Flags) -> Result<&'access mut V>
+    {
+        unsafe {
+            self.overwrite_in_place_unsized(
+                access, key, mem::size_of::<V>(), flags)
+        }
+    }
+
+    /// Returns a writable reference to the array of values belonging to the
+    /// given key in the database.
+    ///
+    /// This has all the caveats of both `overwrite()` and `reserve_array()`.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// # let db = defdb(&env);
+    /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+    /// {
+    ///   let mut access = txn.access();
+    ///   let f = lmdb::put::Flags::empty();
+    ///   let mut cursor = txn.cursor(&db).unwrap();
+    ///   cursor.put(&mut access, "foo", "bar", f).unwrap();
+    ///   {
+    ///     let data: &mut [u8] = cursor.overwrite_in_place_array(
+    ///       &mut access, "foo", 3, f).unwrap();
+    ///     // Directly edit the value in the database
+    ///     data[2] = b'z';
+    ///   }
+    ///   assert_eq!(("foo", "baz"), cursor.get_current(&access).unwrap());
+    /// }
+    /// txn.commit().unwrap();
+    /// # }
+    /// ```
+    pub fn overwrite_in_place_array<'access, K : AsLmdbBytes + ?Sized,
+                                    V : LmdbRaw>
+        (&mut self, access: &'access mut WriteAccessor,
+         key: &K, count: usize, flags: put::Flags)
+         -> Result<&'access mut [V]>
+    {
+        unsafe {
+            self.overwrite_in_place_unsized(
+                access, key, count * mem::size_of::<V>(), flags)
+        }
+    }
+
+    /// Returns a writable reference to the value belonging to the given key in
+    /// the database.
+    ///
+    /// This has all the caveats of both `overwrite()` and `reserve_unsized()`.
+    ///
+    /// ## Unsafety
+    ///
+    /// The caller must ensure `size` is a valid size of `V`.
+    pub unsafe fn overwrite_in_place_unsized
+        <'access, K : AsLmdbBytes + ?Sized, V : FromReservedLmdbBytes + ?Sized>
+        (&mut self, access: &'access mut WriteAccessor,
+         key: &K, size: usize, flags: put::Flags) -> Result<&'access mut V>
     {
         try!(assert_sensible_cursor(&*access, self));
 
         let mut mv_key = as_val(key);
         let mut out_val = EMPTY_VAL;
-        out_val.mv_size = mem::size_of::<V>();
+        out_val.mv_size = size;
 
-        unsafe {
-            lmdb_call!(ffi::mdb_cursor_put(
-                self.cursor.0, &mut mv_key, &mut out_val,
-                flags.bits() | ffi::MDB_RESERVE | ffi::MDB_CURRENT));
+        lmdb_call!(ffi::mdb_cursor_put(
+            self.cursor.0, &mut mv_key, &mut out_val,
+            flags.bits() | ffi::MDB_RESERVE | ffi::MDB_CURRENT));
 
-            Ok(from_reserved(access, &out_val))
-        }
+        Ok(from_reserved(access, &out_val))
     }
 
     /// Stores multiple data elements with the same key in a single request.
@@ -549,13 +1192,50 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// needs to know the exact size of each individual item and must be able
     /// to directly reinterpret the slice as a byte array.
     ///
-    /// On success, returns the number of items that were actually inserted.
+    /// On success, returns the number of items that were actually written.
+    ///
+    /// ## Warning
+    ///
+    /// `MDB_MULTIPLE` has historically been rather problematic. Using this
+    /// function may result in erratic behaviour on many versions of LMDB.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let env = create_env();
+    /// # let db = dupfixeddb(&env);
+    /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+    /// {
+    ///   let mut access = txn.access();
+    ///   let f = lmdb::put::Flags::empty();
+    ///   let mut cursor = txn.cursor(&db).unwrap();
+    ///   // XXX Whether this is supposed to be 4 or 3 is unclear.
+    ///   assert_eq!(4, cursor.put_multiple(
+    ///     &mut access, "bar", &[0u32, 1u32, 2u32, 1u32], f).unwrap());
+    /// # // XXX I wanted a lot more assertions here, but I kept running into
+    /// # // issues that I think but am not sure are bugs.
+    ///
+    ///   assert_eq!(("bar", &0u32), cursor.first(&access).unwrap());
+    ///   assert_eq!(("bar", &1u32), cursor.next(&access).unwrap());
+    ///   assert_eq!(("bar", &2u32), cursor.next(&access).unwrap());
+    ///   assert!(cursor.next::<str,u32>(&access).is_err());
+    /// }
+    /// txn.commit().unwrap();
+    /// # }
+    /// ```
     pub fn put_multiple<K : AsLmdbBytes + ?Sized, V : LmdbRaw>
         (&mut self, access: &mut WriteAccessor,
          key: &K, values: &[V], flags: put::Flags)
          -> Result<usize>
     {
         try!(assert_sensible_cursor(&*access, self));
+
+        // Some LMDB versions didn't (don't?) handle count=0 correctly
+        if values.is_empty() {
+            return Ok(0);
+        }
 
         let mut mv_key = as_val(key);
         let mut mv_vals = [ ffi::MDB_val {
@@ -568,7 +1248,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
 
         unsafe {
             lmdb_call!(ffi::mdb_cursor_put(
-                self.cursor.0, &mut mv_key, &mut mv_vals[0],
+                self.cursor.0, &mut mv_key, mv_vals.as_mut_ptr(),
                 flags.bits() | ffi::MDB_MULTIPLE));
         }
 
@@ -580,6 +1260,9 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// By default, this deletes only the current pair. `flags` can be set to
     /// `NODUPDATA` for `DUPDATA` databases to delete everything with the
     /// current key.
+    ///
+    /// See `lmdb_zero::del::NODUPDATA` for examples on how `flags` can be used
+    /// to control behaviour.
     pub fn delete(&mut self, access: &mut WriteAccessor,
                   flags: del::Flags) -> Result<()> {
         try!(assert_sensible_cursor(&*access, self));

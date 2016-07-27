@@ -23,3 +23,21 @@ fn create_env() -> lmdb::Environment {
             lmdb::open::Flags::empty(), 0o600).unwrap()
     }
 }
+
+#[allow(dead_code)]
+fn dupdb(env: &lmdb::Environment) -> lmdb::Database {
+    lmdb::Database::open(env, Some("example"), &lmdb::DatabaseOptions::new(
+        lmdb::db::CREATE | lmdb::db::DUPSORT)).unwrap()
+}
+
+#[allow(dead_code)]
+fn dupfixeddb(env: &lmdb::Environment) -> lmdb::Database {
+    lmdb::Database::open(env, Some("example"), &lmdb::DatabaseOptions::new(
+        lmdb::db::CREATE | lmdb::db::DUPSORT | lmdb::db::DUPFIXED)).unwrap()
+}
+
+#[allow(dead_code)]
+fn defdb(env: &lmdb::Environment) -> lmdb::Database {
+    lmdb::Database::open(env, None, &lmdb::DatabaseOptions::defaults())
+        .unwrap()
+}
