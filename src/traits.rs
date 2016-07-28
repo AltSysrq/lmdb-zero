@@ -11,6 +11,7 @@
 //! This exists as a separate module solely so that it can be wildcard imported
 //! where necessary.
 
+use std::cmp::Ord;
 use std::ffi::CStr;
 use std::mem;
 use std::num::Wrapping;
@@ -113,53 +114,106 @@ pub trait FromReservedLmdbBytes {
 /// ```
 pub unsafe trait LmdbRaw : Copy + Sized { }
 
+/// Trait describing a value which can be used as an LMDB key by having LMDB
+/// call into the value's `Ord` implementation.
+///
+/// ## Unsafety
+///
+/// Behaviour is undefined if the `FromLmdbBytes` or `Ord` implementations
+/// panic.
+pub unsafe trait LmdbOrdKey : FromLmdbBytes + Ord { }
+
 unsafe impl LmdbRaw for bool { }
+unsafe impl LmdbOrdKey for bool { }
 unsafe impl LmdbRaw for u8 { }
+unsafe impl LmdbOrdKey for u8 { }
 unsafe impl LmdbRaw for i8 { }
+unsafe impl LmdbOrdKey for i8 { }
 unsafe impl LmdbRaw for u16 { }
+unsafe impl LmdbOrdKey for u16 { }
 unsafe impl LmdbRaw for i16 { }
+unsafe impl LmdbOrdKey for i16 { }
 unsafe impl LmdbRaw for u32 { }
+unsafe impl LmdbOrdKey for u32 { }
 unsafe impl LmdbRaw for i32 { }
+unsafe impl LmdbOrdKey for i32 { }
 unsafe impl LmdbRaw for u64 { }
+unsafe impl LmdbOrdKey for u64 { }
 unsafe impl LmdbRaw for i64 { }
+unsafe impl LmdbOrdKey for i64 { }
 unsafe impl LmdbRaw for char { }
+unsafe impl LmdbOrdKey for char { }
 unsafe impl LmdbRaw for f32 { }
 unsafe impl LmdbRaw for f64 { }
 
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;0] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;0] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;1] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;1] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;2] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;2] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;3] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;3] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;4] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;4] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;5] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;5] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;6] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;6] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;7] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;7] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;8] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;8] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;9] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;9] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;10] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;10] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;11] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;11] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;12] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;12] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;13] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;13] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;14] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;14] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;15] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;15] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;16] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;16] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;17] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;17] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;18] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;18] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;19] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;19] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;20] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;20] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;21] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;21] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;22] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;22] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;23] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;23] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;24] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;24] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;25] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;25] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;26] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;26] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;27] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;27] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;28] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;28] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;29] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;29] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;30] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;30] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;31] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;31] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;32] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;32] { }
 unsafe impl<V: LmdbRaw> LmdbRaw for Wrapping<V> { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for Wrapping<V> { }
 
 unsafe impl LmdbRaw for () { }
 
@@ -222,6 +276,8 @@ impl<V : LmdbRaw> FromReservedLmdbBytes for [V] {
     }
 }
 
+unsafe impl<V : LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V] { }
+
 impl AsLmdbBytes for CStr {
     /// Returns the raw content of the `CStr`, including the trailing NUL.
     fn as_lmdb_bytes(&self) -> &[u8] {
@@ -237,6 +293,8 @@ impl FromLmdbBytes for CStr {
     }
 }
 
+unsafe impl LmdbOrdKey for CStr { }
+
 impl AsLmdbBytes for str {
     fn as_lmdb_bytes(&self) -> &[u8] {
         self.as_bytes()
@@ -248,6 +306,8 @@ impl FromLmdbBytes for str {
         str::from_utf8(bytes).ok()
     }
 }
+
+unsafe impl LmdbOrdKey for str { }
 
 impl<V : LmdbRaw> AsLmdbBytes for Vec<V> {
     fn as_lmdb_bytes(&self) -> &[u8] {

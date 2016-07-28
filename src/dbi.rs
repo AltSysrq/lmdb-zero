@@ -306,11 +306,6 @@ impl DatabaseOptions {
     /// be used by every program accessing the database, every time the
     /// database is used.
     ///
-    /// ## Unsafety
-    ///
-    /// Behaviour is undefined if the `FromLmdbBytes` or `Ord` implementation
-    /// panics.
-    ///
     /// ## Example
     ///
     /// ```
@@ -322,6 +317,7 @@ impl DatabaseOptions {
     ///   y: i32,
     /// }
     /// unsafe impl lmdb::traits::LmdbRaw for MyStruct { }
+    /// unsafe impl lmdb::traits::LmdbOrdKey for MyStruct { }
     ///
     /// fn my(x: i32, y: i32) -> MyStruct {
     ///   MyStruct { x: x, y: y }
@@ -330,9 +326,7 @@ impl DatabaseOptions {
     /// # fn main() {
     /// # let env = create_env();
     /// let mut opts = lmdb::DatabaseOptions::new(lmdb::db::CREATE);
-    /// unsafe {
-    ///   opts.sort_keys_as::<MyStruct>();
-    /// }
+    /// opts.sort_keys_as::<MyStruct>();
     /// let db = lmdb::Database::open(&env, Some("example"), &opts).unwrap();
     /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
     /// {
@@ -354,7 +348,7 @@ impl DatabaseOptions {
     /// }
     /// txn.commit().unwrap();
     /// # }
-    pub unsafe fn sort_keys_as<K : FromLmdbBytes + Ord + ?Sized>(&mut self) {
+    pub fn sort_keys_as<K : LmdbOrdKey + ?Sized>(&mut self) {
         self.key_cmp = Some(DatabaseOptions::entry_cmp_as::<K>);
     }
 
@@ -376,16 +370,11 @@ impl DatabaseOptions {
     /// otherwise data corruption may occur. The same comparison function must
     /// be used by every program accessing the database, every time the
     /// database is used.
-    ///
-    /// ## Unsafety
-    ///
-    /// Behaviour is undefined if the `FromLmdbBytes` or `Ord` implementation
-    /// panics.
-    pub unsafe fn sort_values_as<V : FromLmdbBytes + Ord + ?Sized>(&mut self) {
+    pub fn sort_values_as<V : LmdbOrdKey + ?Sized>(&mut self) {
         self.val_cmp = Some(DatabaseOptions::entry_cmp_as::<V>);
     }
 
-    extern fn entry_cmp_as<V : FromLmdbBytes + Ord + ?Sized>(
+    extern fn entry_cmp_as<V : LmdbOrdKey + ?Sized>(
         ap: *const ffi::MDB_val, bp: *const ffi::MDB_val) -> c_int
     {
         match unsafe {
