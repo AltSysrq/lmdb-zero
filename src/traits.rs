@@ -76,28 +76,78 @@ pub trait FromReservedLmdbBytes {
     /// ## Unsafety
     ///
     /// This function is allowed to blindly assume that the byte slice is
-    /// the appropriate size.
+    /// an appropriate size.
     unsafe fn from_reserved_lmdb_bytes(&mut [u8]) -> &mut Self;
 }
 
 /// Marker trait indicating a value is to be stored in LMDB by simply
 /// copying it in.
 ///
-/// This implies that one wants integers and such in native byte order, and
-/// that there are no pointers embedded in the values (or that the caller
-/// takes responsibility for the ramifications of reading pointers back out
-/// of a database), that either all possible bit patterns of that size
-/// are valid, or that the caller takes responsibility for ensuring that
-/// invalid bit patterns do not occur, and that the type has no alignment
-/// requirements wider than a pointer.
+/// This trait implies that one wants integers and such in native byte order
+/// and doesn't care about inter-ABI portability of the values. There are a lot
+/// of safety implications as well.
 ///
 /// Implementing this trait provides blanket implementations of
-/// `AsLmdbBytes` and `FromLmdbBytes`.
+/// `AsLmdbBytes`, `FromLmdbBytes`, and `FromReservedLmdbBytes`.
 ///
 /// All integer and floating-point types have this trait, as well as
 /// fixed-width arrays of up to 32 `LmdbRaw` types, and the empty tuple.
 /// (One cannot use `LmdbRaw` with tuples in general, as the physical
 /// layout of tuples is not currently defined.)
+///
+/// ## Unsafety
+///
+/// If the tagged type contains pointers of any kind, they will be stored in
+/// and retrieved from the database, which has serious ramifications,
+/// especially when the `FromReservedLmdbBytes` implementation is used. If the
+/// type contains Rust references, this will almost certainly lead to undefined
+/// behaviour.
+///
+/// Behaviour is undefined if there exist bit patterns of the same size of the
+/// type which are not valid instances of that type unless the client code can
+/// somehow guarantee that such bit patterns do not occur. If this is a
+/// problem, implement `AsLmdbBytes` and `FromLmdbBytes` manually and check for
+/// validity.
+///
+/// Behaviour is undefined if the ABI alignment of the type is greater than
+/// that of a native pointer.
+///
+/// ## Warnings about inner padding
+///
+/// Use of this trait on a struct that is not `#[repr(packed)]` makes it
+/// possible to observe the normally unobservable padding bytes inserted into
+/// the structure to satisfy type alignment.
+///
+/// When simply using these structures as values in a non-`DUPSORT` database,
+/// this simply means some arbitrary extra bytes get written with the values.
+/// This is not going to be a problem unless you plan on sharing the databases
+/// with untrusted third parties (which could leak sensitive information) or do
+/// unusual things with type punning.
+///
+/// However, in any context where values need to be compared (ie, keys, and
+/// values in `DUPSORT` databases), these padding bytes now count towards the
+/// comparison by default. Since the padding contains unpredictable values, you
+/// can easily end up with multiple "identical" keys that differ in their
+/// padding bytes, fail to find values you know are in the database because of
+/// differences in padding values, etc.
+///
+/// One way to deal with both problems is to use `#[repr(packed)]` (in addition
+/// to `#[repr(C)]` which keeps the field order defined across Rust versions),
+/// which simply eliminates the padding bytes altogether. Note that due to a
+/// bug in the Rust compiler, [packed structures can lead to undefined
+/// behaviour in "safe Rust"](https://github.com/rust-lang/rust/issues/27060).
+/// Until that issue is fixed, you should be careful about using
+/// `#[repr(packed)]` for this purpose unless all fields in the struct have the
+/// same size or you understand the ABI(s) you care about well enough to know
+/// whether misalignment will cause issues.
+///
+/// You can alternatively opt to live with the padding bytes, but additionally
+/// implement `LmdbOrdKey` on the type, and then use
+/// `DatabaseOptions::sort_keys_as` or `DatabaseOptions::sort_values_as`
+/// appropriately to use the generated comparison function. As a result, the
+/// padding bytes will be ignored for comparison purposes, but will nontheless
+/// be written into the database and thus remain visible to puns and could leak
+/// information.
 ///
 /// ## Example
 ///
@@ -108,6 +158,8 @@ pub trait FromReservedLmdbBytes {
 /// #[derive(Clone,Copy,Debug)]
 /// struct MyStruct {
 ///   foo: i16,
+///   // See warning about alignment/padding above!
+///   // On AMD64, for example, we get 6 padding bytes here.
 ///   bar: u64,
 /// }
 /// unsafe impl LmdbRaw for MyStruct { }
