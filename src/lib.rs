@@ -283,3 +283,6 @@ pub use tx::{put, del};
 
 mod cursor;
 pub use cursor::{StaleCursor, Cursor};
+
+mod iter;
+pub use iter::{CursorIter, MaybeOwned};
