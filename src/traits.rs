@@ -173,12 +173,42 @@ pub unsafe trait LmdbRaw : Copy + Sized { }
 ///
 /// Behaviour is undefined if the `FromLmdbBytes` or `Ord` implementations
 /// panic.
-pub unsafe trait LmdbOrdKey : FromLmdbBytes + Ord { }
+pub unsafe trait LmdbOrdKey : FromLmdbBytes + Ord {
+    /// Returns whether the default LMDB byte-by-byte comparison is correct for
+    /// valid values of this type.
+    ///
+    /// Generally, one should not specifically use
+    /// `DatabaseOptions::sort_values_as` and so forth for types where this is
+    /// the case. This function exists to support generic code wishing to avoid
+    /// the conversion overhead when the types happen to already be
+    /// byte-comparable.
+    ///
+    /// Note that if this returns true, that does _not_ mean that byte
+    /// comparison is exactly equivalent to `Ord`-based comparison. For
+    /// example, invalid `str` instances sort before valid ones and are equal
+    /// to each other, but byte comparison will intermingle them. Because of
+    /// this, `DatabaseOptions::sort_values_as` and similar do not make
+    /// decisions based on this value; it is the client code's responsibility
+    /// to use this if so desired.
+    ///
+    /// ## Example
+    /// ```
+    /// # use lmdb_zero::traits::LmdbOrdKey;
+    /// assert!(<u8 as LmdbOrdKey>::ordered_by_bytes());
+    /// assert!(!<i8 as LmdbOrdKey>::ordered_by_bytes());
+    /// assert!(<str as LmdbOrdKey>::ordered_by_bytes());
+    /// assert!(<[u8] as LmdbOrdKey>::ordered_by_bytes());
+    /// assert!(!<[i8] as LmdbOrdKey>::ordered_by_bytes());
+    /// ```
+    fn ordered_by_bytes() -> bool { false }
+}
 
 unsafe impl LmdbRaw for bool { }
 unsafe impl LmdbOrdKey for bool { }
 unsafe impl LmdbRaw for u8 { }
-unsafe impl LmdbOrdKey for u8 { }
+unsafe impl LmdbOrdKey for u8 {
+    fn ordered_by_bytes() -> bool { true }
+}
 unsafe impl LmdbRaw for i8 { }
 unsafe impl LmdbOrdKey for i8 { }
 unsafe impl LmdbRaw for u16 { }
@@ -199,73 +229,141 @@ unsafe impl LmdbRaw for f32 { }
 unsafe impl LmdbRaw for f64 { }
 
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;0] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;0] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;0] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;1] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;1] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;1] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;2] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;2] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;2] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;3] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;3] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;3] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;4] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;4] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;4] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;5] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;5] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;5] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;6] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;6] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;6] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;7] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;7] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;7] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;8] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;8] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;8] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;9] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;9] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;9] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;10] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;10] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;10] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;11] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;11] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;11] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;12] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;12] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;12] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;13] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;13] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;13] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;14] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;14] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;14] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;15] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;15] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;15] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;16] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;16] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;16] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;17] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;17] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;17] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;18] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;18] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;18] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;19] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;19] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;19] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;20] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;20] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;20] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;21] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;21] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;21] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;22] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;22] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;22] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;23] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;23] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;23] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;24] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;24] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;24] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;25] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;25] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;25] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;26] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;26] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;26] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;27] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;27] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;27] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;28] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;28] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;28] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;29] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;29] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;29] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;30] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;30] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;30] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;31] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;31] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;31] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;32] { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;32] { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;32] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 unsafe impl<V: LmdbRaw> LmdbRaw for Wrapping<V> { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for Wrapping<V> { }
+unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for Wrapping<V> {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 
 unsafe impl LmdbRaw for () { }
 
@@ -328,7 +426,9 @@ impl<V : LmdbRaw> FromReservedLmdbBytes for [V] {
     }
 }
 
-unsafe impl<V : LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V] { }
+unsafe impl<V : LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V] {
+    fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
+}
 
 impl AsLmdbBytes for CStr {
     /// Returns the raw content of the `CStr`, including the trailing NUL.
@@ -345,7 +445,9 @@ impl FromLmdbBytes for CStr {
     }
 }
 
-unsafe impl LmdbOrdKey for CStr { }
+unsafe impl LmdbOrdKey for CStr {
+    fn ordered_by_bytes() -> bool { true }
+}
 
 impl AsLmdbBytes for str {
     fn as_lmdb_bytes(&self) -> &[u8] {
@@ -359,7 +461,9 @@ impl FromLmdbBytes for str {
     }
 }
 
-unsafe impl LmdbOrdKey for str { }
+unsafe impl LmdbOrdKey for str {
+    fn ordered_by_bytes() -> bool { true }
+}
 
 impl<V : LmdbRaw> AsLmdbBytes for Vec<V> {
     fn as_lmdb_bytes(&self) -> &[u8] {
