@@ -107,7 +107,9 @@ pub trait FromReservedLmdbBytes {
 /// type which are not valid instances of that type unless the client code can
 /// somehow guarantee that such bit patterns do not occur. If this is a
 /// problem, implement `AsLmdbBytes` and `FromLmdbBytes` manually and check for
-/// validity.
+/// validity. Of particular note, `bool` and essentially all `enum` types are
+/// not sensible for use with `LmdbRaw` (directly or within composites) because
+/// they are only valid for particular bit patterns.
 ///
 /// Behaviour is undefined if the ABI alignment of the type is greater than
 /// that of a native pointer.
@@ -203,8 +205,6 @@ pub unsafe trait LmdbOrdKey : FromLmdbBytes + Ord {
     fn ordered_by_bytes() -> bool { false }
 }
 
-unsafe impl LmdbRaw for bool { }
-unsafe impl LmdbOrdKey for bool { }
 unsafe impl LmdbRaw for u8 { }
 unsafe impl LmdbOrdKey for u8 {
     fn ordered_by_bytes() -> bool { true }
