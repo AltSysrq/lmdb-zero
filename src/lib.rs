@@ -35,7 +35,7 @@
 //!   };
 //!   // Open the default database.
 //!   let db = lmdb::Database::open(
-//!     &env, None, &lmdb::DatabaseOptions::new(lmdb::db::Flags::empty()))
+//!     &env, None, &lmdb::DatabaseOptions::defaults())
 //!     .unwrap();
 //!   {
 //!     // Write some data in a transaction

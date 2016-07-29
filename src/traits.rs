@@ -17,6 +17,7 @@ use std::mem;
 use std::num::Wrapping;
 use std::slice;
 use std::str;
+use libc;
 
 use ::Ignore;
 
@@ -203,6 +204,15 @@ pub unsafe trait LmdbOrdKey : FromLmdbBytes + Ord {
     /// assert!(!<[i8] as LmdbOrdKey>::ordered_by_bytes());
     /// ```
     fn ordered_by_bytes() -> bool { false }
+
+    /// Returns whether LMDB will correctly handle this value with the
+    /// `INTEGERKEY` or `INTEGERDUP` flags.
+    ///
+    /// There's generally no reason to use `sort_keys_as` and so forth with
+    /// values where this is true instead of using the appropriate flags. This
+    /// function exists to support generic code which wants to make such
+    /// decisions automatically.
+    fn ordered_as_integer() -> bool { false }
 }
 
 unsafe impl LmdbRaw for u8 { }
@@ -216,11 +226,17 @@ unsafe impl LmdbOrdKey for u16 { }
 unsafe impl LmdbRaw for i16 { }
 unsafe impl LmdbOrdKey for i16 { }
 unsafe impl LmdbRaw for u32 { }
-unsafe impl LmdbOrdKey for u32 { }
+unsafe impl LmdbOrdKey for u32 {
+    fn ordered_as_integer() -> bool { true }
+}
 unsafe impl LmdbRaw for i32 { }
 unsafe impl LmdbOrdKey for i32 { }
 unsafe impl LmdbRaw for u64 { }
-unsafe impl LmdbOrdKey for u64 { }
+unsafe impl LmdbOrdKey for u64 {
+    fn ordered_as_integer() -> bool {
+        mem::size_of::<u64>() == mem::size_of::<libc::size_t>()
+    }
+}
 unsafe impl LmdbRaw for i64 { }
 unsafe impl LmdbOrdKey for i64 { }
 unsafe impl LmdbRaw for char { }

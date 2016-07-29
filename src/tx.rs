@@ -47,8 +47,8 @@ pub mod put {
             /// # fn main() {
             /// # let env = create_env();
             /// let db = lmdb::Database::open(
-            ///   &env, Some("reversed"), &lmdb::DatabaseOptions::new(
-            ///     lmdb::db::DUPSORT | lmdb::db::CREATE))
+            ///   &env, Some("reversed"),
+            ///   &lmdb::DatabaseOptions::create_multimap_unsized::<str,str>())
             ///   .unwrap();
             /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
             /// {
@@ -104,8 +104,8 @@ pub mod put {
             /// # fn main() {
             /// # let env = create_env();
             /// let db = lmdb::Database::open(
-            ///   &env, Some("reversed"), &lmdb::DatabaseOptions::new(
-            ///     lmdb::db::DUPSORT | lmdb::db::CREATE))
+            ///   &env, Some("reversed"),
+            ///   &lmdb::DatabaseOptions::create_multimap_unsized::<str,str>())
             ///   .unwrap();
             /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
             /// {
@@ -183,8 +183,8 @@ pub mod del {
             /// # fn main() {
             /// # let env = create_env();
             /// let db = lmdb::Database::open(
-            ///   &env, Some("reversed"), &lmdb::DatabaseOptions::new(
-            ///     lmdb::db::DUPSORT | lmdb::db::CREATE))
+            ///   &env, Some("reversed"),
+            ///   &lmdb::DatabaseOptions::create_multimap_unsized::<str,str>())
             ///   .unwrap();
             /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
             /// {
@@ -897,8 +897,8 @@ impl<'txn> WriteAccessor<'txn> {
     /// # fn main() {
     /// # let env = create_env();
     /// let db = lmdb::Database::open(
-    ///   &env, Some("example"), &lmdb::DatabaseOptions::new(
-    ///     lmdb::db::CREATE | lmdb::db::DUPSORT))
+    ///   &env, Some("example"),
+    ///   &lmdb::DatabaseOptions::create_multimap_unsized::<str,str>())
     ///   .unwrap();
     /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
     /// {
@@ -942,8 +942,8 @@ impl<'txn> WriteAccessor<'txn> {
     /// # fn main() {
     /// # let env = create_env();
     /// let db = lmdb::Database::open(
-    ///   &env, Some("example"), &lmdb::DatabaseOptions::new(
-    ///     lmdb::db::CREATE | lmdb::db::DUPSORT))
+    ///   &env, Some("example"),
+    ///   &lmdb::DatabaseOptions::create_multimap_unsized::<str,str>())
     ///   .unwrap();
     /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
     /// {

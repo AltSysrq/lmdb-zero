@@ -285,7 +285,10 @@ impl DatabaseOptions {
         }
     }
 
-    /// Synonym for `DatabaseOptions::new(db::Flags::empty())`
+    /// Synonym for `DatabaseOptions::new(db::Flags::empty())`.
+    ///
+    /// Note that this does not even have `db::CREATE` set. This is most useful
+    /// when opening the anonymous default database.
     pub fn defaults() -> DatabaseOptions {
         DatabaseOptions::new(db::Flags::empty())
     }
@@ -372,6 +375,59 @@ impl DatabaseOptions {
     /// database is used.
     pub fn sort_values_as<V : LmdbOrdKey + ?Sized>(&mut self) {
         self.val_cmp = Some(DatabaseOptions::entry_cmp_as::<V>);
+    }
+
+    /// Concisely creates a `DatabaseOptions` to configure a database to have a
+    /// 1:1 mapping using the given key type.
+    ///
+    /// The flags always have `db::CREATE` set. If `K` is understood by LMDB as
+    /// an integer, `db::INTEGERKEY` is set. Otherwise, unless `K` sorts
+    /// properly via byte-string comparison, `sort_keys_as` is called to
+    /// configure the database to use `K`'s `Ord` implementation.
+    pub fn create_map<K : LmdbOrdKey + ?Sized>() -> Self {
+        let mut this = DatabaseOptions::new(db::CREATE);
+        if K::ordered_as_integer() {
+            this.flags |= db::INTEGERKEY;
+        } else if !K::ordered_by_bytes() {
+            this.sort_keys_as::<K>();
+        }
+        this
+    }
+
+    /// Concisely creates a `DatabaseOptions` to configure a database to have a
+    /// 1:M mapping using the given key and unsized value types.
+    ///
+    /// The flags are configured as described with `create_map` with
+    /// `db::DUPSORT` added. If `V` is understood by LMDB as an integer,
+    /// `INTEGERDUP` is set. Otherwise, if `V` is not byte-string comparable,
+    /// `sort_values_as` is used to order values by `V`'s `Ord`
+    /// implementation.
+    pub fn create_multimap_unsized<K : LmdbOrdKey + ?Sized,
+                                   V : LmdbOrdKey + ?Sized>
+        () -> Self
+    {
+        let mut this = DatabaseOptions::create_map::<K>();
+        this.flags |= db::DUPSORT;
+        if V::ordered_as_integer() {
+            this.flags |= db::INTEGERDUP;
+        } else if !V::ordered_by_bytes() {
+            this.sort_values_as::<V>();
+        }
+        this
+    }
+
+    /// Concisely creates a `DatabaseOptions` to configure a database to have a
+    /// 1:M mapping using the given key and fixed-size value types.
+    ///
+    /// This is the same as `create_multimap_unsized`, except that `DUPFIXED`
+    /// is additionally set unconditionally.
+    pub fn create_multimap<K : LmdbOrdKey + ?Sized,
+                           V : LmdbOrdKey + Sized>
+        () -> Self
+    {
+        let mut this = DatabaseOptions::create_multimap_unsized::<K, V>();
+        this.flags |= db::DUPFIXED;
+        this
     }
 
     extern fn entry_cmp_as<V : LmdbOrdKey + ?Sized>(
