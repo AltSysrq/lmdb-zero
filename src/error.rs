@@ -158,6 +158,12 @@ pub trait LmdbResultExt {
     /// If `Ok(val)`, return `Ok(Some(val))`. If `Err` but the code is
     /// `NOTFOUND`, return `Ok(None)`. Otherwise, return self.
     fn to_opt(self) -> Result<Option<Self::Inner>>;
+
+    /// Suppress `KEYEXIST` errors.
+    ///
+    /// If this is `Err` and the code is `KEYEXIST`, switch to `Ok` with the
+    /// given inner value.
+    fn ignore_exists(self, inner: Self::Inner) -> Self;
 }
 
 impl<T> LmdbResultExt for Result<T> {
@@ -167,6 +173,14 @@ impl<T> LmdbResultExt for Result<T> {
         match self {
             Ok(val) => Ok(Some(val)),
             Err(error) if NOTFOUND == error.code => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn ignore_exists(self, inner: T) -> Self {
+        match self {
+            Ok(val) => Ok(val),
+            Err(error) if KEYEXIST == error.code => Ok(inner),
             Err(error) => Err(error),
         }
     }

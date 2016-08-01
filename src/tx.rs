@@ -65,6 +65,35 @@ pub mod put {
             /// txn.commit().unwrap();
             /// # }
             /// ```
+            ///
+            /// When used on a cursor, the cursor is positioned at the
+            /// conflicting key/value pair if this results in a `KEYEXIST`
+            /// error.
+            ///
+            /// ```
+            /// # include!("src/example_helpers.rs");
+            /// # fn main() {
+            /// # let env = create_env();
+            /// let db = lmdb::Database::open(
+            ///   &env, Some("reversed"),
+            ///   &lmdb::DatabaseOptions::create_multimap_unsized::<str,str>())
+            ///   .unwrap();
+            /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
+            /// {
+            ///   let mut access = txn.access();
+            ///   access.put(&db, "Fruit", "Apple", lmdb::put::Flags::empty()).unwrap();
+            ///   access.put(&db, "Fruit", "Orange", lmdb::put::Flags::empty()).unwrap();
+            ///   access.put(&db, "Fruit", "Durian", lmdb::put::Flags::empty()).unwrap();
+            ///
+            ///   let mut cursor = txn.cursor(&db).unwrap();
+            ///   assert_eq!(Err(lmdb::Error { code: lmdb::error::KEYEXIST }),
+            ///              cursor.put(&mut access, "Fruit", "Durian",
+            ///                         lmdb::put::NODUPDATA));
+            ///   assert_eq!(("Fruit", "Durian"), cursor.get_current(&access).unwrap());
+            /// }
+            /// txn.commit().unwrap();
+            /// # }
+            /// ```
             const NODUPDATA = ffi::MDB_NODUPDATA,
             /// Enter the new key/data pair only if the key does not already
             /// appear in the database. The function will return `KEYEXIST` if
