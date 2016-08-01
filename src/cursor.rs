@@ -1277,8 +1277,8 @@ impl<'txn,'db> Cursor<'txn,'db> {
     ///
     /// See `lmdb_zero::del::NODUPDATA` for examples on how `flags` can be used
     /// to control behaviour.
-    pub fn delete(&mut self, access: &mut WriteAccessor,
-                  flags: del::Flags) -> Result<()> {
+    pub fn del(&mut self, access: &mut WriteAccessor,
+               flags: del::Flags) -> Result<()> {
         try!(assert_sensible_cursor(&*access, self));
 
         unsafe {

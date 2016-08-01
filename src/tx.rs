@@ -197,11 +197,11 @@ pub mod del {
             ///   let mut cursor = txn.cursor(&db).unwrap();
             ///   cursor.seek_kv("Fruit", "Durian").unwrap();
             ///   // By default, only the current item is deleted.
-            ///   cursor.delete(&mut access, lmdb::del::Flags::empty()).unwrap();
+            ///   cursor.del(&mut access, lmdb::del::Flags::empty()).unwrap();
             ///   cursor.seek_k::<str,str>(&access, "Fruit").unwrap();
             ///   assert_eq!(2, cursor.count().unwrap());
             ///   // But with `NODUPDATA`, they will all go away
-            ///   cursor.delete(&mut access, lmdb::del::NODUPDATA).unwrap();
+            ///   cursor.del(&mut access, lmdb::del::NODUPDATA).unwrap();
             ///   assert!(cursor.seek_k::<str,str>(&access, "Fruit").is_err());
             /// }
             /// txn.commit().unwrap();
