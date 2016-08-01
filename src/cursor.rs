@@ -1082,6 +1082,14 @@ impl<'txn,'db> Cursor<'txn,'db> {
     ///
     /// This has all the caveats of both `overwrite()` and `reserve()`.
     ///
+    /// ## Updating by mutation
+    ///
+    /// It is possible to use this call to perform a read-modify-write
+    /// operation on the data in the database, provided you are certain that
+    /// the value exists with the exact size of `V`, for example if you just
+    /// read the value as a `V` using something that requires a particular size
+    /// (such as `LmdbRaw`).
+    ///
     /// ## Example
     ///
     /// ```
@@ -1121,6 +1129,12 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// given key in the database.
     ///
     /// This has all the caveats of both `overwrite()` and `reserve_array()`.
+    ///
+    /// ## Updating by mutation
+    ///
+    /// It is possible to use this call to perform a read-modify-write
+    /// operation on the data in the database, provided you are certain that
+    /// the value exists with the exact size of `V` times `count`.
     ///
     /// ## Example
     ///
