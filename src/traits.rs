@@ -96,6 +96,20 @@ pub trait FromReservedLmdbBytes {
 /// (One cannot use `LmdbRaw` with tuples in general, as the physical
 /// layout of tuples is not currently defined.)
 ///
+/// ## Alignment
+///
+/// The `FromLmdbBytes` conversion fails if the alignment of the input data
+/// does not satisfy the alignment of the type. This means that behaviour will
+/// be unpredictable if the required alignment of the struct is greater than 1,
+/// as conversions will pass or fail depending on where LMDB decides to place
+/// the value. If this is a problem, you can make your structure
+/// `#[repr(packed)]` to give it an alignment of 1 (but see also below).
+/// Primitive types can be wrapped in `Unaligned` to achieve the same effect.
+///
+/// If you only intend to support architectures with lax alignments (eg,
+/// AMD64), you can build `lmdb-zero` with the `lax_alignment` feature, which
+/// eliminates this alignment test, but is not strictly safe.
+///
 /// ## Unsafety
 ///
 /// If the tagged type contains pointers of any kind, they will be stored in
@@ -111,9 +125,6 @@ pub trait FromReservedLmdbBytes {
 /// validity. Of particular note, `bool` and essentially all `enum` types are
 /// not sensible for use with `LmdbRaw` (directly or within composites) because
 /// they are only valid for particular bit patterns.
-///
-/// Behaviour is undefined if the ABI alignment of the type is greater than
-/// that of a native pointer.
 ///
 /// ## Warnings about inner padding
 ///
@@ -383,6 +394,11 @@ unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for Wrapping<V> {
 
 unsafe impl LmdbRaw for () { }
 
+#[cfg(lax_alignment)]
+const ALIGN_LAX: bool = true;
+#[cfg(not(lax_alignment))]
+const ALIGN_LAX: bool = false;
+
 impl<V : LmdbRaw> AsLmdbBytes for V {
     fn as_lmdb_bytes(&self) -> &[u8] {
         unsafe {
@@ -394,7 +410,10 @@ impl<V : LmdbRaw> AsLmdbBytes for V {
 
 impl<V: LmdbRaw> FromLmdbBytes for V {
     fn from_lmdb_bytes(bytes: &[u8]) -> Option<&Self> {
-        if bytes.len() == mem::size_of::<V>() {
+        if bytes.len() == mem::size_of::<V>() &&
+            (ALIGN_LAX ||
+             0 == (bytes.as_ptr() as usize) % mem::align_of::<V>())
+        {
             Some(unsafe {
                 mem::transmute(bytes.as_ptr())
             })
@@ -422,7 +441,10 @@ impl<V : LmdbRaw> AsLmdbBytes for [V] {
 
 impl<V : LmdbRaw> FromLmdbBytes for [V] {
     fn from_lmdb_bytes(bytes: &[u8]) -> Option<&Self> {
-        if bytes.len() % mem::size_of::<V>() != 0 {
+        if bytes.len() % mem::size_of::<V>() != 0 ||
+            (!ALIGN_LAX &&
+             0 != (bytes.as_ptr() as usize) % mem::align_of::<V>())
+        {
             None
         } else {
             unsafe {

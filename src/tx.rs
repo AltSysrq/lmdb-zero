@@ -793,7 +793,8 @@ impl<'txn> WriteAccessor<'txn> {
     ///
     /// ```
     /// # include!("src/example_helpers.rs");
-    /// #[repr(C)] #[derive(Clone,Copy,Debug,PartialEq,Eq)]
+    /// #[repr(C, packed)]
+    /// #[derive(Clone,Copy,Debug,PartialEq,Eq)]
     /// struct MyStruct {
     ///   x: i32,
     ///   y: i32,

@@ -275,6 +275,8 @@ mod dbi;
 pub use dbi::{db, Database, DatabaseOptions};
 
 pub mod traits;
+mod unaligned;
+pub use unaligned::{Unaligned, unaligned};
 
 mod tx;
 pub use tx::{ConstTransaction, ReadTransaction, WriteTransaction};

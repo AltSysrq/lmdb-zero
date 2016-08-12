@@ -912,6 +912,8 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// # fn main() {
     /// # let env = create_env();
     /// # let db = defdb(&env);
+    /// use lmdb::unaligned as u;
+    ///
     /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
     /// {
     ///   let mut access = txn.access();
@@ -919,7 +921,8 @@ impl<'txn,'db> Cursor<'txn,'db> {
     ///   let mut cursor = txn.cursor(&db).unwrap();
     ///   cursor.put(&mut access, "Fourty-two", &42u32, f).unwrap();
     ///   cursor.overwrite(&mut access, "Fourty-two", &54u32, f).unwrap();
-    ///   assert_eq!(("Fourty-two", &54u32), cursor.get_current(&access).unwrap());
+    ///   assert_eq!(("Fourty-two", u(&54u32)),
+    ///              cursor.get_current(&access).unwrap());
     /// }
     /// txn.commit().unwrap();
     /// # }
@@ -956,7 +959,8 @@ impl<'txn,'db> Cursor<'txn,'db> {
     ///
     /// ```
     /// # include!("src/example_helpers.rs");
-    /// #[repr(C)] #[derive(Clone,Copy,Debug,PartialEq,Eq)]
+    /// #[repr(C, packed)]
+    /// #[derive(Clone,Copy,Debug,PartialEq,Eq)]
     /// struct MyStruct {
     ///   x: i32,
     ///   y: i32,
@@ -1010,7 +1014,8 @@ impl<'txn,'db> Cursor<'txn,'db> {
     ///
     /// ```
     /// # include!("src/example_helpers.rs");
-    /// #[repr(C)] #[derive(Clone,Copy,Debug,PartialEq,Eq)]
+    /// #[repr(C, packed)]
+    /// #[derive(Clone,Copy,Debug,PartialEq,Eq)]
     /// struct MyStruct {
     ///   x: i32,
     ///   y: i32,
@@ -1097,6 +1102,9 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// # fn main() {
     /// # let env = create_env();
     /// # let db = defdb(&env);
+    /// use lmdb::Unaligned as U;
+    /// use lmdb::unaligned as u;
+    ///
     /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
     /// {
     ///   let mut access = txn.access();
@@ -1104,12 +1112,13 @@ impl<'txn,'db> Cursor<'txn,'db> {
     ///   let mut cursor = txn.cursor(&db).unwrap();
     ///   cursor.put(&mut access, "count", &1u32, f).unwrap();
     ///   {
-    ///     let count: &mut u32 = cursor.overwrite_in_place(
+    ///     let count: &mut U<u32> = cursor.overwrite_in_place(
     ///       &mut access, "count", f).unwrap();
     ///     // Directly edit the value in the database
-    ///     *count += 1;
+    ///     let count2 = count.get() + 1;
+    ///     count.set(count2);
     ///   }
-    ///   assert_eq!(("count", &2u32), cursor.get_current(&access).unwrap());
+    ///   assert_eq!(("count", u(&2u32)), cursor.get_current(&access).unwrap());
     /// }
     /// txn.commit().unwrap();
     /// # }
@@ -1220,6 +1229,9 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// # fn main() {
     /// # let env = create_env();
     /// # let db = dupfixeddb(&env);
+    /// use lmdb::Unaligned as U;
+    /// use lmdb::unaligned as u;
+    ///
     /// let txn = lmdb::WriteTransaction::new(&env).unwrap();
     /// {
     ///   let mut access = txn.access();
@@ -1231,10 +1243,10 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// # // XXX I wanted a lot more assertions here, but I kept running into
     /// # // issues that I think but am not sure are bugs.
     ///
-    ///   assert_eq!(("bar", &0u32), cursor.first(&access).unwrap());
-    ///   assert_eq!(("bar", &1u32), cursor.next(&access).unwrap());
-    ///   assert_eq!(("bar", &2u32), cursor.next(&access).unwrap());
-    ///   assert!(cursor.next::<str,u32>(&access).is_err());
+    ///   assert_eq!(("bar", u(&0u32)), cursor.first(&access).unwrap());
+    ///   assert_eq!(("bar", u(&1u32)), cursor.next(&access).unwrap());
+    ///   assert_eq!(("bar", u(&2u32)), cursor.next(&access).unwrap());
+    ///   assert!(cursor.next::<str,U<u32>>(&access).is_err());
     /// }
     /// txn.commit().unwrap();
     /// # }

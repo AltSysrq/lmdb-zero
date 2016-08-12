@@ -104,6 +104,8 @@ pub mod db {
             /// # include!("src/example_helpers.rs");
             /// # fn main() {
             /// # let env = create_env();
+            /// use lmdb::unaligned as u;
+            ///
             /// let db = lmdb::Database::open(
             ///   &env, Some("reversed"), &lmdb::DatabaseOptions::new(
             ///     lmdb::db::INTEGERKEY | lmdb::db::CREATE)).unwrap();
@@ -122,9 +124,9 @@ pub mod db {
             ///   let mut cursor = txn.cursor(&db).unwrap();
             ///   // But because we used `INTEGERKEY`, they are in fact sorted
             ///   // ascending by integer value.
-            ///   assert_eq!((&0u32, "Zero"), cursor.first(&access).unwrap());
-            ///   assert_eq!((&42u32, "Fourty-two"), cursor.next(&access).unwrap());
-            ///   assert_eq!((&65536u32, "65'536"), cursor.next(&access).unwrap());
+            ///   assert_eq!((u(&0u32), "Zero"), cursor.first(&access).unwrap());
+            ///   assert_eq!((u(&42u32), "Fourty-two"), cursor.next(&access).unwrap());
+            ///   assert_eq!((u(&65536u32), "65'536"), cursor.next(&access).unwrap());
             /// }
             /// txn.commit().unwrap();
             /// # }
@@ -149,6 +151,8 @@ pub mod db {
             /// # include!("src/example_helpers.rs");
             /// # fn main() {
             /// # let env = create_env();
+            /// use lmdb::Unaligned as U;
+            ///
             /// let db = lmdb::Database::open(
             ///   &env, Some("reversed"), &lmdb::DatabaseOptions::new(
             ///     lmdb::db::DUPSORT | lmdb::db::DUPFIXED |
@@ -169,16 +173,16 @@ pub mod db {
             ///   // cursoring.
             ///   let mut xyzzy: Vec<char> = Vec::new();
             ///   let mut cursor = txn.cursor(&db).unwrap();
-            ///   cursor.seek_k::<str,char>(&access, "xyzzy").unwrap();
+            ///   cursor.seek_k::<str,U<char>>(&access, "xyzzy").unwrap();
             ///   loop {
             ///     let chars = if xyzzy.is_empty() {
             ///       // First page.
             ///       // Note that in this example we probably get everything
             ///       // on the first page, but with more values we'd need to
             ///       // use `next_multiple` to get the rest.
-            ///       cursor.get_multiple::<[char]>(&access).unwrap()
+            ///       cursor.get_multiple::<[U<char>]>(&access).unwrap()
             ///     } else {
-            ///       match cursor.next_multiple::<[char]>(&access) {
+            ///       match cursor.next_multiple::<[U<char>]>(&access) {
             ///         // Ok if there's still more for the current key
             ///         Ok(c) => c,
             ///         // Error if at the end of the key.
@@ -186,7 +190,9 @@ pub mod db {
             ///         Err(_) => break,
             ///       }
             ///     };
-            ///     xyzzy.extend(chars);
+            ///     for ch in chars {
+            ///       xyzzy.push(ch.get());
+            ///     }
             ///   }
             ///   // Now we've read in all the values in sorted order.
             ///   assert_eq!(&['x','y','z'], &xyzzy[..]);
@@ -313,7 +319,7 @@ impl DatabaseOptions {
     ///
     /// ```
     /// # include!("src/example_helpers.rs");
-    /// #[repr(C)]
+    /// #[repr(C, packed)]
     /// #[derive(Clone,Copy,Debug,PartialEq,Eq,PartialOrd,Ord)]
     /// struct MyStruct {
     ///   x: i32,

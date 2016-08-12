@@ -17,3 +17,11 @@ libc = "0.2.14"
 
 [dev-dependencies]
 tempdir = "0.3.4"
+
+[features]
+# Don't check for alignment when converting `LmdbRaw` types from byte arrays.
+#
+# This allows more flexible use of structures and primitive types, but is not
+# strictly safe and will cause segmentation faults on architectures which
+# require alignment for most values.
+lax_alignment = []
