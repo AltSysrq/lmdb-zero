@@ -11,6 +11,7 @@
 //! This exists as a separate module solely so that it can be wildcard imported
 //! where necessary.
 
+use std::char;
 use std::cmp::Ord;
 use std::ffi::CStr;
 use std::mem;
@@ -250,8 +251,6 @@ unsafe impl LmdbOrdKey for u64 {
 }
 unsafe impl LmdbRaw for i64 { }
 unsafe impl LmdbOrdKey for i64 { }
-unsafe impl LmdbRaw for char { }
-unsafe impl LmdbOrdKey for char { }
 unsafe impl LmdbRaw for f32 { }
 unsafe impl LmdbRaw for f64 { }
 
@@ -514,5 +513,25 @@ static IGNORE: Ignore = Ignore;
 impl FromLmdbBytes for Ignore {
     fn from_lmdb_bytes(_: &[u8]) -> Option<&Ignore> {
         Some(&IGNORE)
+    }
+}
+
+impl AsLmdbBytes for char {
+    fn as_lmdb_bytes(&self) -> &[u8] {
+        unsafe {
+            slice::from_raw_parts(
+                self as *const char as *const u8,
+                mem::size_of::<char>())
+        }
+    }
+}
+
+impl AsLmdbBytes for [char] {
+    fn as_lmdb_bytes(&self) -> &[u8] {
+        unsafe {
+            slice::from_raw_parts(
+                self.as_ptr() as *const u8,
+                self.len() * mem::size_of::<char>())
+        }
     }
 }

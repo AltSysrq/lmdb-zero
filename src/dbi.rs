@@ -171,18 +171,20 @@ pub mod db {
             ///
             ///   // Read in all the chars of "xyzzy" in sorted order via
             ///   // cursoring.
-            ///   let mut xyzzy: Vec<char> = Vec::new();
+            ///   // Note that we have to read `u32`s because `char`s are not
+            ///   // directly convertable from byte arrays.
+            ///   let mut xyzzy: Vec<u32> = Vec::new();
             ///   let mut cursor = txn.cursor(&db).unwrap();
-            ///   cursor.seek_k::<str,U<char>>(&access, "xyzzy").unwrap();
+            ///   cursor.seek_k::<str,U<u32>>(&access, "xyzzy").unwrap();
             ///   loop {
             ///     let chars = if xyzzy.is_empty() {
             ///       // First page.
             ///       // Note that in this example we probably get everything
             ///       // on the first page, but with more values we'd need to
             ///       // use `next_multiple` to get the rest.
-            ///       cursor.get_multiple::<[U<char>]>(&access).unwrap()
+            ///       cursor.get_multiple::<[U<u32>]>(&access).unwrap()
             ///     } else {
-            ///       match cursor.next_multiple::<[U<char>]>(&access) {
+            ///       match cursor.next_multiple::<[U<u32>]>(&access) {
             ///         // Ok if there's still more for the current key
             ///         Ok(c) => c,
             ///         // Error if at the end of the key.
@@ -195,7 +197,8 @@ pub mod db {
             ///     }
             ///   }
             ///   // Now we've read in all the values in sorted order.
-            ///   assert_eq!(&['x','y','z'], &xyzzy[..]);
+            ///   assert_eq!(&['x' as u32, 'y' as u32, 'z' as u32],
+            ///              &xyzzy[..]);
             /// }
             /// txn.commit().unwrap();
             /// # }
