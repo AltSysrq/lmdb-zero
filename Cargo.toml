@@ -7,6 +7,7 @@ readme = "README.md"
 repository = "https://github.com/fullcontact/lmdb-zero"
 homepage = "https://github.com/fullcontact/lmdb-zero"
 documentation = "https://api.fullcontact.com/v3/docs/rustdoc/lmdb_zero/index.html"
+keywords = ["lmdb", "zero-copy", "btree"]
 
 description = """
 An almost-safe, near-zero-cost, feature-complete, unabashedly non-abstract
