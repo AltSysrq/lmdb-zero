@@ -4,7 +4,10 @@ version = "0.0.1"
 authors = ["FullContact, Inc"]
 license = "MIT/Apache-2.0"
 readme = "README.md"
-# TODO: Links
+repository = "https://github.com/fullcontact/lmdb-zero"
+homepage = "https://github.com/fullcontact/lmdb-zero"
+documentation = "https://fullcontact.github.io/lmdb-zero/lmdb_zero/index.html"
+
 description = """
 An almost-safe, near-zero-cost, feature-complete, unabashedly non-abstract
 wrapper around LMDB.
