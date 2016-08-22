@@ -35,6 +35,17 @@ safety.
 
 - Cursors and read transactions can be reset and reused.
 
+## Status
+
+The API is complete but not necessarily completely stable; there may yet be
+unsound parts of the API or the implementations.
+
+This crate has not been tested on architectures with strong alignment
+constraints. While the conversion API checks for correct alignment by default,
+issues such as [#27060](https://github.com/rust-lang/rust/issues/27060) could
+come up, and it is of course possible there are bugs in handling alignment
+here.
+
 ## Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
