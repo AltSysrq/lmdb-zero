@@ -6,7 +6,7 @@ license = "MIT/Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/fullcontact/lmdb-zero"
 homepage = "https://github.com/fullcontact/lmdb-zero"
-documentation = "https://fullcontact.github.io/lmdb-zero/lmdb_zero/index.html"
+documentation = "https://api.fullcontact.com/v3/docs/rustdoc/lmdb_zero/index.html"
 
 description = """
 An almost-safe, near-zero-cost, feature-complete, unabashedly non-abstract

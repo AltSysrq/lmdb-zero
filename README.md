@@ -4,7 +4,7 @@ lmdb-zero is a near-zero-cost wrapper around [LMDB](http://lmdb.tech/) designed
 to allow using the full range of features offered by LMDB while keeping it
 reasonably easy to write safe programs.
 
-[Documentation](https://fullcontact.github.io/lmdb-zero/lmdb_zero/index.html)
+[Documentation](https://api.fullcontact.com/v3/docs/rustdoc/lmdb_zero/index.html)
 
 ## Why _another_ LMDB library?
 
