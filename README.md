@@ -46,6 +46,12 @@ issues such as [#27060](https://github.com/rust-lang/rust/issues/27060) could
 come up, and it is of course possible there are bugs in handling alignment
 here.
 
+## Changelog
+
+*0.2.0*: Switch from `lmdb-sys` to newer `liblmdb-sys`.
+
+*0.1.0*: Initial release.
+
 ## Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
