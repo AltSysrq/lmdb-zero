@@ -9,7 +9,7 @@
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
-use libc::{self, c_uint, c_void};
+use libc::{self, c_void};
 
 use ffi;
 
@@ -126,7 +126,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     fn get_0_kv<'access, K : FromLmdbBytes + ?Sized,
                 V : FromLmdbBytes + ?Sized>
         (&mut self, access: &'access ConstAccessor,
-         op: c_uint) -> Result<(&'access K, &'access V)>
+         op: ffi::MDB_cursor_op) -> Result<(&'access K, &'access V)>
     {
         try!(assert_sensible_cursor(access, self));
 
@@ -143,7 +143,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
 
     fn get_0_v<'access, V : FromLmdbBytes + ?Sized>
         (&mut self, access: &'access ConstAccessor,
-         op: c_uint) -> Result<&'access V>
+         op: ffi::MDB_cursor_op) -> Result<&'access V>
     {
         try!(assert_sensible_cursor(access, self));
 
@@ -158,7 +158,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     }
 
     fn get_kv_0<K: AsLmdbBytes + ?Sized, V : AsLmdbBytes + ?Sized>
-        (&mut self, key: &K, val: &V, op: c_uint) -> Result<()>
+        (&mut self, key: &K, val: &V, op: ffi::MDB_cursor_op) -> Result<()>
     {
         let mut mv_key = as_val(key);
         let mut mv_val = as_val(val);
@@ -173,7 +173,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     fn get_kv_v<'access, K : AsLmdbBytes + ?Sized,
                 V : AsLmdbBytes + FromLmdbBytes + ?Sized>
         (&mut self, access: &'access ConstAccessor,
-         key: &K, val: &V, op: c_uint) -> Result<&'access V>
+         key: &K, val: &V, op: ffi::MDB_cursor_op) -> Result<&'access V>
     {
         try!(assert_sensible_cursor(access, self));
 
@@ -191,7 +191,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     fn get_k_v<'access, K : AsLmdbBytes + ?Sized,
                V : FromLmdbBytes + ?Sized>
         (&mut self, access: &'access ConstAccessor,
-         key: &K, op: c_uint) -> Result<&'access V>
+         key: &K, op: ffi::MDB_cursor_op) -> Result<&'access V>
     {
         try!(assert_sensible_cursor(access, self));
 
@@ -209,7 +209,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     fn get_k_kv<'access, K : AsLmdbBytes + FromLmdbBytes + ?Sized,
                 V : FromLmdbBytes + ?Sized>
         (&mut self, access: &'access ConstAccessor,
-         key: &K, op: c_uint) -> Result<(&'access K, &'access V)>
+         key: &K, op: ffi::MDB_cursor_op) -> Result<(&'access K, &'access V)>
     {
         try!(assert_sensible_cursor(access, self));
 
@@ -253,7 +253,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// txn.commit().unwrap();
         /// # }
         /// ```
-        fn first, ffi::MDB_FIRST
+        fn first, ffi::MDB_cursor_op::MDB_FIRST
     }
 
     cursor_get_0_v! {
@@ -288,7 +288,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// txn.commit().unwrap();
         /// # }
         /// ```
-        fn first_dup, ffi::MDB_FIRST_DUP
+        fn first_dup, ffi::MDB_cursor_op::MDB_FIRST_DUP
     }
 
     /// Positions the cursor at the given (key,value) pair.
@@ -325,7 +325,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     pub fn seek_kv<K : AsLmdbBytes + ?Sized, V : AsLmdbBytes + ?Sized>
         (&mut self, key: &K, val: &V) -> Result<()>
     {
-        self.get_kv_0(key, val, ffi::MDB_GET_BOTH)
+        self.get_kv_0(key, val, ffi::MDB_cursor_op::MDB_GET_BOTH)
     }
 
     /// Positions the cursor at the given key and the "nearest" value to `val`,
@@ -376,7 +376,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         (&mut self, access: &'access ConstAccessor,
          key: &K, val: &V) -> Result<&'access V>
     {
-        self.get_kv_v(access, key, val, ffi::MDB_GET_BOTH_RANGE)
+        self.get_kv_v(access, key, val, ffi::MDB_cursor_op::MDB_GET_BOTH_RANGE)
     }
 
     cursor_get_0_kv! {
@@ -407,7 +407,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// txn.commit().unwrap();
         /// # }
         /// ```
-        fn get_current, ffi::MDB_GET_CURRENT
+        fn get_current, ffi::MDB_cursor_op::MDB_GET_CURRENT
     }
 
     cursor_get_0_v! {
@@ -427,7 +427,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// `MDB_GET_MULTIPLE` operation.
         ///
         /// See `lmdb_zero::db::DUPFIXED` for examples of usage.
-        fn get_multiple, ffi::MDB_GET_MULTIPLE
+        fn get_multiple, ffi::MDB_cursor_op::MDB_GET_MULTIPLE
     }
 
     cursor_get_0_v! {
@@ -438,7 +438,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// `MDB_NEXT_MULTIPLE` operation.
         ///
         /// See `lmdb_zero::db::DUPFIXED` for examples of usage.
-        fn next_multiple, ffi::MDB_NEXT_MULTIPLE
+        fn next_multiple, ffi::MDB_cursor_op::MDB_NEXT_MULTIPLE
     }
 
     cursor_get_0_kv! {
@@ -469,7 +469,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// txn.commit().unwrap();
         /// # }
         /// ```
-        fn last, ffi::MDB_LAST
+        fn last, ffi::MDB_cursor_op::MDB_LAST
     }
 
     cursor_get_0_v! {
@@ -505,7 +505,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// txn.commit().unwrap();
         /// # }
         /// ```
-        fn last_dup, ffi::MDB_LAST_DUP
+        fn last_dup, ffi::MDB_cursor_op::MDB_LAST_DUP
     }
 
     cursor_get_0_kv! {
@@ -543,7 +543,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// txn.commit().unwrap();
         /// # }
         /// ```
-        fn next, ffi::MDB_NEXT
+        fn next, ffi::MDB_cursor_op::MDB_NEXT
     }
 
     cursor_get_0_kv! {
@@ -579,7 +579,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// txn.commit().unwrap();
         /// # }
         /// ```
-        fn next_dup, ffi::MDB_NEXT_DUP
+        fn next_dup, ffi::MDB_cursor_op::MDB_NEXT_DUP
     }
 
     cursor_get_0_kv! {
@@ -617,7 +617,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// txn.commit().unwrap();
         /// # }
         /// ```
-        fn next_nodup, ffi::MDB_NEXT_NODUP
+        fn next_nodup, ffi::MDB_cursor_op::MDB_NEXT_NODUP
     }
 
     cursor_get_0_kv! {
@@ -655,7 +655,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// txn.commit().unwrap();
         /// # }
         /// ```
-        fn prev, ffi::MDB_PREV
+        fn prev, ffi::MDB_cursor_op::MDB_PREV
     }
 
     cursor_get_0_kv! {
@@ -692,7 +692,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// txn.commit().unwrap();
         /// # }
         /// ```
-        fn prev_dup, ffi::MDB_PREV_DUP
+        fn prev_dup, ffi::MDB_cursor_op::MDB_PREV_DUP
     }
 
     cursor_get_0_kv! {
@@ -729,7 +729,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// txn.commit().unwrap();
         /// # }
         /// ```
-        fn prev_nodup, ffi::MDB_PREV_NODUP
+        fn prev_nodup, ffi::MDB_cursor_op::MDB_PREV_NODUP
     }
 
     /// Positions the cursor at the first item of the given key.
@@ -766,7 +766,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         (&mut self, access: &'access ConstAccessor, key: &K)
         -> Result<&'access V>
     {
-        self.get_k_v(access, key, ffi::MDB_SET)
+        self.get_k_v(access, key, ffi::MDB_cursor_op::MDB_SET)
     }
 
     /// Positions the cursor at the first item of the given key.
@@ -803,7 +803,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         (&mut self, access: &'access ConstAccessor, key: &K)
          -> Result<(&'access K, &'access V)>
     {
-        self.get_k_kv(access, key, ffi::MDB_SET_KEY)
+        self.get_k_kv(access, key, ffi::MDB_cursor_op::MDB_SET_KEY)
     }
 
     /// Positions the cursor at the first item whose key is greater than or
@@ -841,7 +841,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         (&mut self, access: &'access ConstAccessor, key: &K)
          -> Result<(&'access K, &'access V)>
     {
-        self.get_k_kv(access, key, ffi::MDB_SET_RANGE)
+        self.get_k_kv(access, key, ffi::MDB_cursor_op::MDB_SET_RANGE)
     }
 
     /// Writes a single value through this cursor.

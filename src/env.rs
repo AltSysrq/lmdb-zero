@@ -14,6 +14,7 @@ use std::sync::Mutex;
 use libc::{self, c_char, c_int, c_uint, c_void};
 
 use ffi;
+use ffi2;
 use tx::TxHandle;
 use ::{Fd, FileMode, Result};
 
@@ -135,7 +136,7 @@ pub mod open {
 
 /// Flags used when copying an LMDB environment.
 pub mod copy {
-    use ffi;
+    use ffi2;
     use libc;
 
     bitflags! {
@@ -144,7 +145,7 @@ pub mod copy {
             /// Perform compaction while copying: omit free pages and sequentially
             /// renumber all pages in output. This option consumes more CPU and
             /// runs more slowly than the default.
-            const COMPACT = ffi::MDB_CP_COMPACT,
+            const COMPACT = ffi2::MDB_CP_COMPACT,
         }
     }
 }
@@ -360,7 +361,7 @@ impl Environment {
     pub fn copy(&self, path: &str, flags: copy::Flags) -> Result<()> {
         let path_cstr = try!(CString::new(path));
         unsafe {
-            lmdb_call!(ffi::mdb_env_copy2(
+            lmdb_call!(ffi2::mdb_env_copy2(
                 self.env.0, path_cstr.as_ptr(), flags.bits()));
         }
         Ok(())
@@ -379,7 +380,7 @@ impl Environment {
     /// See long-lived transactions under Caveats.
     pub fn copyfd(&self, fd: Fd, flags: copy::Flags) -> Result<()> {
         unsafe {
-            lmdb_call!(ffi::mdb_env_copyfd2(self.env.0, fd, flags.bits()));
+            lmdb_call!(ffi2::mdb_env_copyfd2(self.env.0, fd, flags.bits()));
         }
         Ok(())
     }
@@ -486,7 +487,7 @@ impl Environment {
     ///
     /// Panics if LMDB returns success but sets the path to a NULL pointer.
     pub fn path(&self) -> Result<&CStr> {
-        let mut raw: *const c_char = ptr::null();
+        let mut raw: *mut c_char = ptr::null_mut();
         unsafe {
             lmdb_call!(ffi::mdb_env_get_path(self.env.0, &mut raw));
             if raw.is_null() {

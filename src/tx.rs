@@ -13,6 +13,7 @@ use std::ptr;
 use libc::c_uint;
 
 use ffi;
+use ffi2;
 
 use env::{self, Environment, Stat};
 use dbi::{db, Database};
@@ -393,7 +394,7 @@ impl<'env> ConstTransaction<'env> {
     /// Returns the internal id of this transaction.
     pub fn id(&self) -> usize {
         unsafe {
-            ffi::mdb_txn_id(self.tx.0)
+            ffi2::mdb_txn_id(self.tx.0)
         }
     }
 

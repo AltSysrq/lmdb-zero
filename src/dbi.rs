@@ -576,16 +576,10 @@ impl<'a> Database<'a> {
             }
 
             if let Some(fun) = options.key_cmp {
-                lmdb_call!(ffi::mdb_set_compare(
-                    // XXX lmdb_sys's declaration of this function is incorrect
-                    // due to the `MDB_cmp_func` typedef (which is a bare
-                    // function in C) being translated as a pointer.
-                    raw_tx, raw, mem::transmute(fun)));
+                lmdb_call!(ffi::mdb_set_compare(raw_tx, raw, fun));
             }
             if let Some(fun) = options.val_cmp {
-                lmdb_call!(ffi::mdb_set_dupsort(
-                    // XXX see above
-                    raw_tx, raw, mem::transmute(fun)));
+                lmdb_call!(ffi::mdb_set_dupsort(raw_tx, raw, fun));
             }
 
             try!(wrapped_tx.commit());

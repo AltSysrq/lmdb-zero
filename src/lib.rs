@@ -215,16 +215,14 @@
 
 #![deny(missing_docs)]
 
-extern crate lmdb_sys as ffi;
+extern crate liblmdb_sys as ffi;
 extern crate libc;
 #[macro_use] extern crate bitflags;
 
 use std::ffi::CStr;
 
-pub use ffi::mode_t as FileMode;
-// XXX Supposedly this is redefined to a pointer on Windows, but the FFI
-// bindings don't define the type and just use c_int inline.
-pub use libc::c_int as Fd;
+pub use ffi::mdb_mode_t as FileMode;
+pub use ffi::mdb_filehandle_t as Fd;
 
 macro_rules! lmdb_call {
     ($x:expr) => { {
@@ -264,6 +262,7 @@ pub fn version() -> (i32, i32, i32) {
 pub struct Ignore;
 
 mod mdb_vals;
+mod ffi2;
 
 pub mod error;
 pub use error::{Error, Result};

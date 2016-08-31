@@ -15,12 +15,13 @@ use std::result;
 use libc::c_int;
 
 use ffi;
+use ffi2;
 
 /// A string path was given which contains a `NUL` byte.
 ///
 /// This is not a standard LMDB error code; it is produced by the FFI layer
 /// here when translating rust strings to C strings.
-pub const NULSTR: c_int = ffi::MDB_LAST_ERRCODE + 1;
+pub const NULSTR: c_int = ffi2::MDB_LAST_ERRCODE + 1;
 /// An attempt was made to open a database which is already open.
 ///
 /// This is not a standard LMDB error code; LMDB in fact permits opening
@@ -86,7 +87,7 @@ pub const BAD_TXN: c_int = ffi::MDB_BAD_TXN;
 /// Unsupported size of key/DB name/data, or wrong `DUPFIXED` size
 pub const BAD_VALSIZE: c_int = ffi::MDB_BAD_VALSIZE;
 /// The specified DBI was changed unexpectedly
-pub const BAD_DBI: c_int = ffi::MDB_BAD_DBI;
+pub const BAD_DBI: c_int = ffi2::MDB_BAD_DBI;
 
 /// Error type returned by LMDB.
 #[derive(Clone,Copy,PartialEq,Eq,Hash)]
