@@ -259,8 +259,8 @@ impl Drop for TxHandle {
 
 impl TxHandle {
     pub unsafe fn commit(&mut self) -> Result<()> {
-        lmdb_call!(ffi::mdb_txn_commit(self.0));
-        self.0 = ptr::null_mut();
+        let txn_p = mem::replace(&mut self.0, ptr::null_mut());
+        lmdb_call!(ffi::mdb_txn_commit(txn_p));
         Ok(())
     }
 }
