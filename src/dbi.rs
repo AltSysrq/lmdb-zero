@@ -568,7 +568,7 @@ impl<'a> Database<'a> {
                 env::env_ptr(env), ptr::null_mut(), 0, &mut raw_tx));
             let mut wrapped_tx = TxHandle(raw_tx); // For auto-closing etc
             lmdb_call!(ffi::mdb_dbi_open(
-                raw_tx, name_cstr.map_or(ptr::null(), |s| s.as_ptr()),
+                raw_tx, name_cstr.as_ref().map_or(ptr::null(), |s| s.as_ptr()),
                 options.flags.bits(), &mut raw));
 
             if !locked_dbis.insert(raw) {
