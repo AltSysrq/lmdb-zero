@@ -48,6 +48,10 @@ here.
 
 ## Changelog
 
+*0.2.1*: Fix use-after-free when passing database name to `mdb_dbi_open`. Fix
+ calling `mdb_txn_abort` after transaction commit fails.
+ [#1](https://github.com/fullcontact/lmdb-zero/pull/1).
+
 *0.2.0*: Switch from `lmdb-sys` to newer `liblmdb-sys`.
 
 *0.1.0*: Initial release.
