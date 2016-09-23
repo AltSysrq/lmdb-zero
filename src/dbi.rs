@@ -295,6 +295,28 @@ impl<'a> Drop for DbHandle<'a> {
 ///
 /// The library does, however, guarantee that there will be at most one
 /// `Database` object with the same dbi and environment per process.
+///
+/// ## Lifetime
+///
+/// A `Database` must be strictly outlived by its `Environment`.
+///
+/// `'a` is covariant: given two lifetimes `'x` and `'y` where `'x: 'y`, a
+/// `&Database<'x>` will implicitly coerce to `&Database<'y>`.
+///
+/// ```rust,norun
+/// # #![allow(dead_code)]
+/// # extern crate lmdb_zero as lmdb;
+/// # fn main() { }
+/// #
+/// fn convariance<'x, 'y>(db: &lmdb::Database<'x>)
+/// where 'x: 'y {
+///   let _db2: &lmdb::Database<'y> = db;
+/// }
+/// ```
+///
+/// Because of this property, if you need to hold onto an `&lmdb::Database` and
+/// must explicitly name both lifetimes, it is usually best to use the same
+/// lifetime for both the reference and the parameter, eg `&'x lmdb::Database<'x>`.
 #[derive(Debug)]
 pub struct Database<'a> {
     db: DbHandle<'a>,

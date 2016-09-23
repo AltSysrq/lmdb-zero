@@ -117,6 +117,17 @@
 //! If you want to define your own types to store in the database, see the
 //! `lmdb_zero::traits` submodule.
 //!
+//! # Lifetimes
+//!
+//! Lmdb-zero heavily uses lifetime parameters to allow user code to safely
+//! retain handles into LMDB without extra runtime overhead.
+//!
+//! While this makes the library very flexible, it also makes it somewhat
+//! harder to use when its types need to be referenced explicitly, for example
+//! as struct members. The documentation for each type with lifetime parameters
+//! therefore includes a short discussion of how the lifetimes are intended to
+//! interact and how best to work with them.
+//!
 //! # Major Differences from the LMDB C API
 //!
 //! Databases cannot be created or destroyed within a transaction due to the

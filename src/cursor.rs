@@ -36,7 +36,52 @@ impl Drop for CursorHandle {
 /// transaction or to the whole environment. Its lifetime is also naturally
 /// bound to the lifetime of the database it cursors into.
 ///
+/// ## Lifetime
 ///
+/// A cursor must be strictly outlived by both the transaction that created it
+/// and by the database into which it indexes. The two lifetimes are needed to
+/// permit a cursor to be disassociated from its transaction and rebound to a
+/// later transaction.
+///
+/// `Cursor` is covariant on both of its lifetimes. If you have an owned
+/// `Cursor` as a structure member and don't plan on using the `dissoc_cursor`
+/// API, you can use one lifetime parameter to fill both without issue.
+///
+/// ```rust,norun
+/// # #![allow(dead_code)]
+/// # extern crate lmdb_zero as lmdb;
+/// # fn main() { }
+/// #
+/// struct CursorOwner<'a> {
+///   cursor: lmdb::Cursor<'a, 'a>,
+/// }
+/// fn covariance<'a, 'txn: 'a, 'db: 'a>(c: lmdb::Cursor<'txn,'db>)
+///                                     -> CursorOwner<'a> {
+///   CursorOwner { cursor: c }
+/// }
+/// ```
+///
+/// Note that an `&mut Cursor<'txn,'db>` is naturally _invariant_ on both
+/// lifetimes. This means that structures containing `&mut Cursor` or functions
+/// taking them as references should generally include both.
+///
+/// ```rust,norun
+/// # #![allow(dead_code)]
+/// # extern crate lmdb_zero as lmdb;
+/// # fn main() { }
+/// #
+/// // Write this
+/// fn do_stuff_with_cursor<'txn, 'db>(c: &mut lmdb::Cursor<'txn,'db>) {
+///   // Stuff
+/// }
+/// // Not this
+/// fn do_stuff_with_cursor_2<'a>(c: &mut lmdb::Cursor<'a,'a>) {
+///   // Stuff
+/// }
+/// ```
+///
+/// Attempting to unify the lifetimes on a `&mut Cursor` will often work, but
+/// can also cause the compiler to infer lifetimes in unfavourable ways.
 #[derive(Debug)]
 pub struct Cursor<'txn,'db> {
     cursor: CursorHandle,

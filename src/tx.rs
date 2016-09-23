@@ -289,6 +289,29 @@ impl TxHandle {
 /// Mutability of a transaction reference does not indicate mutability of the
 /// underlying database, but rather exclusivity for enforcement of child
 /// transaction semantics.
+///
+/// ## Lifetime
+///
+/// A `ConstTransaction` must be strictly outlived by its `Environment`.
+///
+/// `'env` is covariant: given two lifetimes `'x` and `'y` where `'x: 'y`, a
+/// `&ConstTransaction<'x>` will implicitly coerce to `&ConstTransaction<'y>`.
+///
+/// ```rust,norun
+/// # #![allow(dead_code)]
+/// # extern crate lmdb_zero as lmdb;
+/// # fn main() { }
+/// #
+/// fn convariance<'x, 'y>(db: &lmdb::ConstTransaction<'x>)
+/// where 'x: 'y {
+///   let _db2: &lmdb::ConstTransaction<'y> = db;
+/// }
+/// ```
+///
+/// Because of this property, if you need to hold onto an
+/// `&lmdb::ConstTransaction` and must explicitly name both lifetimes,
+/// it is usually best to use the same lifetime for both the reference and the
+/// parameter, eg `&'x lmdb::ConstTransaction<'x>`.
 #[derive(Debug)]
 pub struct ConstTransaction<'env> {
     env: &'env Environment,
@@ -301,18 +324,30 @@ pub struct ConstTransaction<'env> {
 /// In addition to all operations valid on `ConstTransaction`, a
 /// `ReadTransaction` can additionally operate on cursors with a lifetime
 /// scoped to the environment instead of the transaction.
+///
+/// ## Lifetime
+///
+/// All notes for `ConstTransaction` apply.
 #[derive(Debug)]
 pub struct ReadTransaction<'env>(ConstTransaction<'env>);
 /// A read-write LMDB transaction.
 ///
 /// In addition to all operations valid on `ConstTransaction`, it is also
 /// possible to perform writes to the underlying databases.
+///
+/// ## Lifetime
+///
+/// All notes for `ConstTransaction` apply.
 #[derive(Debug)]
 pub struct WriteTransaction<'env>(ConstTransaction<'env>);
 
 /// A read-only LMDB transaction that has been reset.
 ///
 /// It can be renewed by calling `ResetTransaction::renew()`.
+///
+/// ## Lifetime
+///
+/// All notes for `ReadTransaction` apply.
 #[derive(Debug)]
 pub struct ResetTransaction<'env>(ReadTransaction<'env>);
 
@@ -320,12 +355,80 @@ pub struct ResetTransaction<'env>(ReadTransaction<'env>);
 ///
 /// There is no corresponding `ReadAccessor`, since there are no additional
 /// operations one can do with a known-read-only accessor.
+///
+/// ## Lifetime
+///
+/// A `ConstAccessor` must be outlived by its parent transaction (not
+/// necessarily strictly). The parent transaction cannot be destroyed
+/// (committed, etc) until the borrow from the accessor ends. This in many
+/// cases requires adding an extra scope (with bare `{ }` braces) in which to
+/// obtain the accessor, as can be seen in many of the examples.
+///
+/// The lifitem of a reference to a `ConstAccessor` dictates the lifetime of
+/// the data accessed via the accessor.
+///
+/// The `'txn` lifetime parameter is covariant. That is, given two lifetimes
+/// `'x` and `'y` where `'x: 'y`, a `&ConstAccessor<'x>` can be implicitly
+/// coerced into a `&ConstAccessor<'y>`.
+///
+/// ```rust,norun
+/// # #![allow(dead_code)]
+/// # extern crate lmdb_zero as lmdb;
+/// # fn main() { }
+/// #
+/// fn convariance<'x, 'y>(db: &lmdb::ConstAccessor<'x>)
+/// where 'x: 'y {
+///   let _db2: &lmdb::ConstAccessor<'y> = db;
+/// }
+/// ```
+///
+/// Because of this property, if you need to hold onto an
+/// `&lmdb::ConstAccessor` and must explicitly name both lifetimes, it
+/// is usually best to use the same lifetime for both the reference and the
+/// parameter, eg `&'x lmdb::ConstAccessor<'x>`.
 #[derive(Debug)]
 pub struct ConstAccessor<'txn>(&'txn ConstTransaction<'txn>);
 /// A read-write data accessor obtained from a `WriteTransaction`.
 ///
 /// All operations that can be performed on `ConstAccessor` can also be
 /// performed on `WriteAccessor`.
+///
+/// ## Lifetime
+///
+/// Nominally, `WriteAccessor` would behave the same as `ConstAccessor`.
+///
+/// However, there is never any useful reason to explicitly reference a
+/// `&WriteAccessor` (ie, a shared reference). Instead, one talks about a
+/// `&mut WriteAccessor`. The unfortunate consequence here is that the `'txn`
+/// lifetime ends up being _invariant_; that is, the following code will not
+/// compile:
+///
+/// ```rust,ignore
+/// # #![allow(dead_code)]
+/// # extern crate lmdb_zero as lmdb;
+/// # fn main() { }
+/// #
+/// fn convariance<'x, 'y>(db: &mut lmdb::WriteAccessor<'x>)
+/// where 'x: 'y {
+///   let _db2: &mut lmdb::WriteAccessor<'y> = db; // ERROR!
+/// }
+/// ```
+///
+/// The compiler's error messages here tend to be unhelpful. In certain cases,
+/// it will suggest changing the function declaration above to something like
+/// `&'x mut lmdb::WriteAccessor<'x>`. Applying such a fix when it is suggested
+/// _will appear to work_. But what happens is that you end up propagating
+/// `&'txn mut lmdb::WriteAccessor<'txn>` the whole way up your call stack.
+/// Since `'txn` is invariant, it is inferred to be exactly equal to the
+/// lifetime of the transaction, and now you've declared that the borrow from
+/// the transaction exists for the entire lifetime of the transaction. This
+/// means that you cannot actually commit the transaction.
+///
+/// Instead, make sure you always have separate type parameters on the `&mut`
+/// and the `WriteAccessor` itself. This can usually be accomplished by letting
+/// lifetime elision run its course. If you must name both, generally go with
+/// `&'access mut WriteAccessor<'txn>`. The `'access` lifetime is the lifetime
+/// of any data you obtain via the accessor.
 #[derive(Debug)]
 pub struct WriteAccessor<'txn>(ConstAccessor<'txn>);
 

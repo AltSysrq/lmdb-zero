@@ -443,7 +443,7 @@ impl Environment {
     /// ## Unsafety
     ///
     /// The caller must ensure that multiple threads do not call this
-    /// concurrently with itself or with `get_flags()`. This cannot be
+    /// concurrently with itself or with `get_flags()`. This could not be
     /// accomplished by using `&mut self`, since any open databases necessarily
     /// have the environment borrowed already.
     ///
