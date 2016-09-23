@@ -290,6 +290,7 @@ pub use unaligned::{Unaligned, unaligned};
 
 mod tx;
 pub use tx::{ConstTransaction, ReadTransaction, WriteTransaction};
+pub use tx::ResetTransaction;
 pub use tx::{ConstAccessor, WriteAccessor};
 pub use tx::{put, del};
 
