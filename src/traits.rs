@@ -18,7 +18,6 @@ use std::mem;
 use std::num::Wrapping;
 use std::slice;
 use std::str;
-use libc;
 
 use ::Ignore;
 
@@ -61,8 +60,9 @@ pub trait AsLmdbBytes {
 /// deserialisation mechanism.
 pub trait FromLmdbBytes {
     /// Given a byte slice, return an instance of `Self` described, or
-    /// `None` if the given byte slice is not an appropriate value.
-    fn from_lmdb_bytes(&[u8]) -> Option<&Self>;
+    /// `Err` with an error message if the given byte slice is not an
+    /// appropriate value.
+    fn from_lmdb_bytes(&[u8]) -> Result<&Self, String>;
 }
 
 /// Like `FromLmdbBytes`, but can be used with `put_reserve()` calls.
@@ -199,7 +199,14 @@ pub trait FromReservedLmdbBytes {
 /// }
 /// unsafe impl LmdbRaw for MyStruct { }
 /// ```
-pub unsafe trait LmdbRaw : Copy + Sized { }
+pub unsafe trait LmdbRaw : Copy + Sized {
+    /// Returns the name of this type to report in error messages.
+    ///
+    /// If not implemented, defaults to `"?"`.
+    fn reported_type() -> &'static str {
+        "?"
+    }
+}
 
 /// Trait describing a value which can be used as an LMDB key by having LMDB
 /// call into the value's `Ord` implementation.
@@ -247,32 +254,45 @@ pub unsafe trait LmdbOrdKey : FromLmdbBytes + Ord {
     fn ordered_as_integer() -> bool { false }
 }
 
-unsafe impl LmdbRaw for u8 { }
-unsafe impl LmdbOrdKey for u8 {
-    fn ordered_by_bytes() -> bool { true }
+macro_rules! raw {
+    ($typ:ident) => {
+        unsafe impl LmdbRaw for $typ {
+            fn reported_type() -> &'static str {
+                stringify!($typ)
+            }
+        }
+    };
+
+    ($typ:ident, Ord) => {
+        raw!($typ);
+        unsafe impl LmdbOrdKey for $typ { }
+    };
+
+    ($typ:ident, Int) => {
+        raw!($typ);
+        unsafe impl LmdbOrdKey for $typ {
+            fn ordered_as_integer() -> bool { true }
+        }
+    };
+
+    ($typ:ident, Bytes) => {
+        raw!($typ);
+        unsafe impl LmdbOrdKey for $typ {
+            fn ordered_by_bytes() -> bool { true }
+        }
+    };
 }
-unsafe impl LmdbRaw for i8 { }
-unsafe impl LmdbOrdKey for i8 { }
-unsafe impl LmdbRaw for u16 { }
-unsafe impl LmdbOrdKey for u16 { }
-unsafe impl LmdbRaw for i16 { }
-unsafe impl LmdbOrdKey for i16 { }
-unsafe impl LmdbRaw for u32 { }
-unsafe impl LmdbOrdKey for u32 {
-    fn ordered_as_integer() -> bool { true }
-}
-unsafe impl LmdbRaw for i32 { }
-unsafe impl LmdbOrdKey for i32 { }
-unsafe impl LmdbRaw for u64 { }
-unsafe impl LmdbOrdKey for u64 {
-    fn ordered_as_integer() -> bool {
-        mem::size_of::<u64>() == mem::size_of::<libc::size_t>()
-    }
-}
-unsafe impl LmdbRaw for i64 { }
-unsafe impl LmdbOrdKey for i64 { }
-unsafe impl LmdbRaw for f32 { }
-unsafe impl LmdbRaw for f64 { }
+
+raw!(u8, Bytes);
+raw!(i8, Ord);
+raw!(u16, Ord);
+raw!(i16, Ord);
+raw!(u32, Int);
+raw!(i32, Ord);
+raw!(u64, Ord);
+raw!(i64, Ord);
+raw!(f32);
+raw!(f64);
 
 unsafe impl<V: LmdbRaw> LmdbRaw for [V;0] { }
 unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;0] {
@@ -428,17 +448,30 @@ impl<V : LmdbRaw> AsLmdbBytes for V {
 }
 
 impl<V: LmdbRaw> FromLmdbBytes for V {
-    fn from_lmdb_bytes(bytes: &[u8]) -> Option<&Self> {
-        if bytes.len() == mem::size_of::<V>() &&
-            (ALIGN_LAX ||
-             0 == (bytes.as_ptr() as usize) % mem::align_of::<V>())
-        {
-            Some(unsafe {
-                mem::transmute(bytes.as_ptr())
-            })
-        } else {
-            None
+    fn from_lmdb_bytes(bytes: &[u8]) -> Result<&Self, String> {
+        let size = mem::size_of::<V>();
+        let align = mem::align_of::<V>();
+
+        if bytes.len() != size {
+            return Err(
+                format!("Type {} is size {}, but byte array has size {}",
+                        V::reported_type(), size, bytes.len()));
         }
+
+        let misalign = (bytes.as_ptr() as usize) % align;
+        if !ALIGN_LAX && 0 != misalign {
+            return Err(
+                format!("Type {} requires alignment {}, but byte array \
+                         at {:08x} is misaligned by {} bytes \
+                         (see https://api.fullcontact.com/v3/docs/rustdoc/\
+                         lmdb_zero/traits/trait.LmdbRaw.html#alignment)",
+                        V::reported_type(), align,
+                        (bytes.as_ptr() as usize), misalign));
+        }
+
+        Ok(unsafe {
+            mem::transmute(bytes.as_ptr())
+        })
     }
 }
 
@@ -459,18 +492,33 @@ impl<V : LmdbRaw> AsLmdbBytes for [V] {
 }
 
 impl<V : LmdbRaw> FromLmdbBytes for [V] {
-    fn from_lmdb_bytes(bytes: &[u8]) -> Option<&Self> {
-        if bytes.len() % mem::size_of::<V>() != 0 ||
-            (!ALIGN_LAX &&
-             0 != (bytes.as_ptr() as usize) % mem::align_of::<V>())
-        {
-            None
-        } else {
-            unsafe {
-                Some(slice::from_raw_parts(
-                    bytes.as_ptr() as *const V,
-                    bytes.len() / mem::size_of::<V>()))
-            }
+    fn from_lmdb_bytes(bytes: &[u8]) -> Result<&Self, String> {
+        let size = mem::size_of::<V>();
+        let align = mem::align_of::<V>();
+
+        let size_mod = bytes.len() % size;
+        if 0 != size_mod {
+            return Err(
+                format!("Type [{}] must have a size which is a multiple \
+                         of {}, but byte array has size {} ({} trailing bytes)",
+                        V::reported_type(), size, bytes.len(), size_mod));
+        }
+
+        let misalign = (bytes.as_ptr() as usize) % align;
+        if !ALIGN_LAX && 0 != misalign {
+            return Err(
+                format!("Type [{}] requires alignment {}, but byte array \
+                         at {:08x} is misaligned by {} bytes \
+                         (see https://api.fullcontact.com/v3/docs/rustdoc/\
+                         lmdb_zero/traits/trait.LmdbRaw.html#alignment)",
+                        V::reported_type(), align,
+                        (bytes.as_ptr() as usize), misalign));
+        }
+
+        unsafe {
+            Ok(slice::from_raw_parts(
+                bytes.as_ptr() as *const V,
+                bytes.len() / size))
         }
     }
 }
@@ -497,8 +545,9 @@ impl AsLmdbBytes for CStr {
 impl FromLmdbBytes for CStr {
     /// Directly converts the byte slice into a `CStr`, including a
     /// required trailing NUL.
-    fn from_lmdb_bytes(bytes: &[u8]) -> Option<&Self> {
-        CStr::from_bytes_with_nul(bytes).ok()
+    fn from_lmdb_bytes(bytes: &[u8]) -> Result<&Self, String> {
+        CStr::from_bytes_with_nul(bytes).map_err(
+            |_| "NUL byte in CString value".to_owned())
     }
 }
 
@@ -513,8 +562,9 @@ impl AsLmdbBytes for str {
 }
 
 impl FromLmdbBytes for str {
-    fn from_lmdb_bytes(bytes: &[u8]) -> Option<&str> {
-        str::from_utf8(bytes).ok()
+    fn from_lmdb_bytes(bytes: &[u8]) -> Result<&str, String> {
+        str::from_utf8(bytes).map_err(
+            |_| "String is not valid UTF-8".to_owned())
     }
 }
 
@@ -531,8 +581,8 @@ impl<V : LmdbRaw> AsLmdbBytes for Vec<V> {
 static IGNORE: Ignore = Ignore;
 
 impl FromLmdbBytes for Ignore {
-    fn from_lmdb_bytes(_: &[u8]) -> Option<&Ignore> {
-        Some(&IGNORE)
+    fn from_lmdb_bytes(_: &[u8]) -> Result<&Ignore, String> {
+        Ok(&IGNORE)
     }
 }
 

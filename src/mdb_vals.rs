@@ -43,7 +43,7 @@ pub fn from_val<'a, O, V : FromLmdbBytes + ?Sized>(
     _owner: &'a O, val: &ffi::MDB_val) -> Result<&'a V>
 {
     let bytes = mdb_val_as_bytes(_owner, val);
-    V::from_lmdb_bytes(bytes).ok_or(Error::ValRejected(String::new()))
+    V::from_lmdb_bytes(bytes).map_err(|s| Error::ValRejected(s))
 }
 
 pub unsafe fn from_reserved<'a, O, V : FromReservedLmdbBytes + ?Sized>(
