@@ -1303,7 +1303,8 @@ impl<'txn,'db> Cursor<'txn,'db> {
     ///   let mut cursor = txn.cursor(&db).unwrap();
     ///   // XXX Whether this is supposed to be 4 or 3 is unclear.
     ///   assert_eq!(4, cursor.put_multiple(
-    ///     &mut access, "bar", &[0u32, 1u32, 2u32, 1u32], f).unwrap());
+    ///     &mut access, "bar", &[U::new(0u32), U::new(1u32),
+    ///                           U::new(2u32), U::new(1u32)], f).unwrap());
     /// # // XXX I wanted a lot more assertions here, but I kept running into
     /// # // issues that I think but am not sure are bugs.
     ///

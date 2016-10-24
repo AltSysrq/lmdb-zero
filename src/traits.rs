@@ -208,6 +208,29 @@ pub unsafe trait LmdbRaw : Copy + Sized {
     }
 }
 
+/// Marker trait for types where `Unaligned<T>` is `LmdbRaw`.
+///
+/// This has all the implications as `LmdbRaw`, except that blanket
+/// implementations around the bare type are not available. This forces the
+/// client code to wrap the type in `Unaligned` to explicitly handle possible
+/// misalignment.
+///
+/// All `LmdbRaw` types are `LmdbRawIfUnaligned`.
+pub unsafe trait LmdbRawIfUnaligned : Copy + Sized {
+    /// Returns the name of this type to report in error messages.
+    ///
+    /// If not implemented, defaults to `"?"`.
+    fn reported_type() -> &'static str {
+        "?"
+    }
+}
+
+unsafe impl<T : LmdbRaw> LmdbRawIfUnaligned for T {
+    fn reported_type() -> &'static str {
+        <T as LmdbRaw>::reported_type()
+    }
+}
+
 /// Trait describing a value which can be used as an LMDB key by having LMDB
 /// call into the value's `Ord` implementation.
 ///
@@ -254,37 +277,85 @@ pub unsafe trait LmdbOrdKey : FromLmdbBytes + Ord {
     fn ordered_as_integer() -> bool { false }
 }
 
+/// Marker trait for types where `Unaligned<T>` is `LmdbOrdKey`.
+///
+/// All `LmdbOrdKey + LmdbRaw` are `LmdbOrdKeyIfUnaligned`.
+///
+/// ## Unsafety
+///
+/// Behaviour is undefined if the `FromLmdbBytes` or `Ord` implementations
+/// panic.
+pub unsafe trait LmdbOrdKeyIfUnaligned : LmdbRawIfUnaligned + Ord {
+    /// Like `LmdbOrdKey::ordered_by_bytes()`
+    fn ordered_by_bytes() -> bool { false }
+    /// Like `LmdbOrdKey::ordered_as_integer()`
+    fn ordered_as_integer() -> bool { false }
+}
+
+unsafe impl<T : LmdbRaw + LmdbOrdKey> LmdbOrdKeyIfUnaligned for T {
+    fn ordered_by_bytes() -> bool {
+        <T as LmdbOrdKey>::ordered_by_bytes()
+    }
+
+    fn ordered_as_integer() -> bool {
+        <T as LmdbOrdKey>::ordered_as_integer()
+    }
+}
+
 macro_rules! raw {
     ($typ:ident) => {
-        unsafe impl LmdbRaw for $typ {
+        unsafe impl LmdbRawIfUnaligned for $typ {
             fn reported_type() -> &'static str {
                 stringify!($typ)
+            }
+        }
+        impl AsLmdbBytes for $typ {
+            fn as_lmdb_bytes(&self) -> &[u8] {
+                unsafe {
+                    slice::from_raw_parts(
+                        self as *const $typ as *const u8,
+                        mem::size_of::<$typ>())
+                }
+            }
+        }
+        impl AsLmdbBytes for [$typ] {
+            fn as_lmdb_bytes(&self) -> &[u8] {
+                unsafe {
+                    slice::from_raw_parts(
+                        self.as_ptr() as *const u8,
+                        self.len() * mem::size_of::<$typ>())
+                }
             }
         }
     };
 
     ($typ:ident, Ord) => {
         raw!($typ);
-        unsafe impl LmdbOrdKey for $typ { }
+        unsafe impl LmdbOrdKeyIfUnaligned for $typ { }
     };
 
     ($typ:ident, Int) => {
         raw!($typ);
-        unsafe impl LmdbOrdKey for $typ {
+        unsafe impl LmdbOrdKeyIfUnaligned for $typ {
             fn ordered_as_integer() -> bool { true }
-        }
-    };
-
-    ($typ:ident, Bytes) => {
-        raw!($typ);
-        unsafe impl LmdbOrdKey for $typ {
-            fn ordered_by_bytes() -> bool { true }
         }
     };
 }
 
-raw!(u8, Bytes);
-raw!(i8, Ord);
+unsafe impl LmdbRaw for u8 {
+    fn reported_type() -> &'static str {
+        "u8"
+    }
+}
+unsafe impl LmdbOrdKey for u8 {
+    fn ordered_by_bytes() -> bool { true }
+}
+unsafe impl LmdbRaw for i8 {
+    fn reported_type() -> &'static str {
+        "i8"
+    }
+}
+unsafe impl LmdbOrdKey for i8 { }
 raw!(u16, Ord);
 raw!(i16, Ord);
 raw!(u32, Int);
@@ -426,8 +497,13 @@ unsafe impl<V: LmdbRaw> LmdbRaw for [V;32] { }
 unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for [V;32] {
     fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
 }
-unsafe impl<V: LmdbRaw> LmdbRaw for Wrapping<V> { }
-unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for Wrapping<V> {
+
+unsafe impl<V: LmdbRawIfUnaligned> LmdbRawIfUnaligned for Wrapping<V> {
+    fn reported_type() -> &'static str {
+        V::reported_type()
+    }
+}
+unsafe impl<V: LmdbOrdKeyIfUnaligned> LmdbOrdKeyIfUnaligned for Wrapping<V> {
     fn ordered_by_bytes() -> bool { V::ordered_by_bytes() }
 }
 
