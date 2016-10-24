@@ -830,6 +830,15 @@ impl<'txn> ConstAccessor<'txn> {
     /// The returned memory is valid until the next mutation through the
     /// transaction or the end of the transaction (both are enforced through
     /// the borrow checker).
+    ///
+    /// ## Errors
+    ///
+    /// This call may return errors for reasons other than the key not being
+    /// found. The easiest way to handle "not found" is generally to use the
+    /// `to_opt` method on `traits::LmdbResultExt` to promote the value into a
+    /// `Result<Option<V>>`. Most important of these other errors is the
+    /// possibility of the key being found, but the value not being convertible
+    /// to a `&V`.
     #[inline]
     pub fn get<K : AsLmdbBytes + ?Sized, V : FromLmdbBytes + ?Sized>(
         &self, db: &Database, key: &K) -> Result<&V>
