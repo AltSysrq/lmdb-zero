@@ -145,6 +145,7 @@ pub fn stale_cursor_ptr<'db>(cursor: &StaleCursor<'db>)
 macro_rules! cursor_get_0_kv {
     ($(#[$doc:meta])* fn $method:ident, $op:path) => {
         $(#[$doc])*
+        #[inline]
         pub fn $method<'access, K : FromLmdbBytes + ?Sized,
                        V : FromLmdbBytes + ?Sized>
             (&mut self, access: &'access ConstAccessor)
@@ -158,6 +159,7 @@ macro_rules! cursor_get_0_kv {
 macro_rules! cursor_get_0_v {
     ($(#[$doc:meta])* fn $method:ident, $op:path) => {
         $(#[$doc])*
+        #[inline]
         pub fn $method<'access, V : FromLmdbBytes + ?Sized>
             (&mut self, access: &'access ConstAccessor)
              -> Result<(&'access V)>
@@ -168,6 +170,7 @@ macro_rules! cursor_get_0_v {
 }
 
 impl<'txn,'db> Cursor<'txn,'db> {
+    #[inline]
     fn get_0_kv<'access, K : FromLmdbBytes + ?Sized,
                 V : FromLmdbBytes + ?Sized>
         (&mut self, access: &'access ConstAccessor,
@@ -186,6 +189,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
             try!(from_val(access, &out_val))))
     }
 
+    #[inline]
     fn get_0_v<'access, V : FromLmdbBytes + ?Sized>
         (&mut self, access: &'access ConstAccessor,
          op: ffi::MDB_cursor_op) -> Result<&'access V>
@@ -202,6 +206,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         from_val(access, &out_val)
     }
 
+    #[inline]
     fn get_kv_0<K: AsLmdbBytes + ?Sized, V : AsLmdbBytes + ?Sized>
         (&mut self, key: &K, val: &V, op: ffi::MDB_cursor_op) -> Result<()>
     {
@@ -215,6 +220,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         Ok(())
     }
 
+    #[inline]
     fn get_kv_v<'access, K : AsLmdbBytes + ?Sized,
                 V : AsLmdbBytes + FromLmdbBytes + ?Sized>
         (&mut self, access: &'access ConstAccessor,
@@ -233,6 +239,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         from_val(access, &inout_val)
     }
 
+    #[inline]
     fn get_k_v<'access, K : AsLmdbBytes + ?Sized,
                V : FromLmdbBytes + ?Sized>
         (&mut self, access: &'access ConstAccessor,
@@ -251,6 +258,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         from_val(access, &out_val)
     }
 
+    #[inline]
     fn get_k_kv<'access, K : AsLmdbBytes + FromLmdbBytes + ?Sized,
                 V : FromLmdbBytes + ?Sized>
         (&mut self, access: &'access ConstAccessor,
@@ -367,6 +375,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// txn.commit().unwrap();
     /// # }
     /// ```
+    #[inline]
     pub fn seek_kv<K : AsLmdbBytes + ?Sized, V : AsLmdbBytes + ?Sized>
         (&mut self, key: &K, val: &V) -> Result<()>
     {
@@ -416,6 +425,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// txn.commit().unwrap();
     /// # }
     /// ```
+    #[inline]
     pub fn seek_k_nearest_v<'access, K : AsLmdbBytes + ?Sized,
                             V : AsLmdbBytes + FromLmdbBytes + ?Sized>
         (&mut self, access: &'access ConstAccessor,
@@ -806,6 +816,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// txn.commit().unwrap();
     /// # }
     /// ```
+    #[inline]
     pub fn seek_k<'access, K : AsLmdbBytes + ?Sized,
                   V : FromLmdbBytes + ?Sized>
         (&mut self, access: &'access ConstAccessor, key: &K)
@@ -843,6 +854,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// txn.commit().unwrap();
     /// # }
     /// ```
+    #[inline]
     pub fn seek_k_both<'access, K : AsLmdbBytes + FromLmdbBytes + ?Sized,
                        V : FromLmdbBytes + ?Sized>
         (&mut self, access: &'access ConstAccessor, key: &K)
@@ -881,6 +893,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// txn.commit().unwrap();
     /// # }
     /// ```
+    #[inline]
     pub fn seek_range_k<'access, K : AsLmdbBytes + FromLmdbBytes + ?Sized,
                         V : FromLmdbBytes + ?Sized>
         (&mut self, access: &'access ConstAccessor, key: &K)
@@ -919,6 +932,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// txn.commit().unwrap();
     /// # }
     /// ```
+    #[inline]
     pub fn put<K : AsLmdbBytes + ?Sized, V : AsLmdbBytes + ?Sized>
         (&mut self, access: &mut WriteAccessor,
          key: &K, val: &V, flags: put::Flags) -> Result<()>
@@ -972,6 +986,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// txn.commit().unwrap();
     /// # }
     /// ```
+    #[inline]
     pub fn overwrite<K : AsLmdbBytes + ?Sized, V : AsLmdbBytes + ?Sized>
         (&mut self, access: &mut WriteAccessor,
          key: &K, val: &V, flags: put::Flags) -> Result<()>
@@ -1033,6 +1048,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// txn.commit().unwrap();
     /// # }
     /// ```
+    #[inline]
     pub fn reserve<'access, K : AsLmdbBytes + ?Sized,
                    V : FromReservedLmdbBytes + Sized>
         (&mut self, access: &'access mut WriteAccessor,
@@ -1086,6 +1102,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// txn.commit().unwrap();
     /// # }
     /// ```
+    #[inline]
     pub fn reserve_array<'access, K : AsLmdbBytes + ?Sized,
                          V : LmdbRaw>
         (&mut self, access: &'access mut WriteAccessor,
@@ -1168,6 +1185,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// txn.commit().unwrap();
     /// # }
     /// ```
+    #[inline]
     pub fn overwrite_in_place<'access, K : AsLmdbBytes + ?Sized,
                               V : FromReservedLmdbBytes + Sized>
         (&mut self, access: &'access mut WriteAccessor,
@@ -1214,6 +1232,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// txn.commit().unwrap();
     /// # }
     /// ```
+    #[inline]
     pub fn overwrite_in_place_array<'access, K : AsLmdbBytes + ?Sized,
                                     V : LmdbRaw>
         (&mut self, access: &'access mut WriteAccessor,
@@ -1334,6 +1353,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     ///
     /// See `lmdb_zero::del::NODUPDATA` for examples on how `flags` can be used
     /// to control behaviour.
+    #[inline]
     pub fn del(&mut self, access: &mut WriteAccessor,
                flags: del::Flags) -> Result<()> {
         try!(assert_sensible_cursor(&*access, self));
@@ -1348,6 +1368,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// Return count of duplicates for current key.
     ///
     /// This call is only valid on `DUPSORT` databases.
+    #[inline]
     pub fn count(&mut self) -> Result<usize> {
         let mut raw: libc::size_t = 0;
         unsafe {

@@ -473,6 +473,7 @@ impl<'env> ConstTransaction<'env> {
     /// let access2 = txn.access(); // PANIC!
     /// # }
     /// ```
+    #[inline]
     pub fn access(&self) -> ConstAccessor {
         assert!(!self.has_yielded_accessor.get(),
                 "Transaction accessor already returned");
@@ -482,6 +483,7 @@ impl<'env> ConstTransaction<'env> {
 
     /// Creates a new cursor scoped to this transaction, bound to the given
     /// database.
+    #[inline]
     pub fn cursor<'txn, 'db>(&'txn self, db: &'db Database)
                              -> Result<Cursor<'txn,'db>> {
         try!(db.assert_same_env(self.env));
@@ -523,6 +525,7 @@ impl<'env> ConstTransaction<'env> {
         Ok(db::Flags::from_bits_truncate(raw))
     }
 
+    #[inline]
     fn assert_sensible_cursor<'a>(&self, cursor: &Cursor<'env,'a>)
                                   -> Result<()> {
         if self as *const ConstTransaction<'env> !=
@@ -536,6 +539,7 @@ impl<'env> ConstTransaction<'env> {
 }
 
 // Internally used by other parts of the crate
+#[inline]
 pub fn assert_sensible_cursor(access: &ConstAccessor, cursor: &Cursor)
                               -> Result<()> {
     access.0.assert_sensible_cursor(cursor)
@@ -808,6 +812,7 @@ impl<'env> WriteTransaction<'env> {
     /// ## Panics
     ///
     /// Panics if called more than once on the same transaction.
+    #[inline]
     pub fn access(&self) -> WriteAccessor {
         WriteAccessor(self.0.access())
     }
@@ -825,6 +830,7 @@ impl<'txn> ConstAccessor<'txn> {
     /// The returned memory is valid until the next mutation through the
     /// transaction or the end of the transaction (both are enforced through
     /// the borrow checker).
+    #[inline]
     pub fn get<K : AsLmdbBytes + ?Sized, V : FromLmdbBytes + ?Sized>(
         &self, db: &Database, key: &K) -> Result<&V>
     {
@@ -864,6 +870,7 @@ impl<'txn> WriteAccessor<'txn> {
     /// behavior is to enter the new key/data pair, replacing any previously
     /// existing key if duplicates are disallowed, or adding a duplicate data
     /// item if duplicates are allowed (`DUPSORT`).
+    #[inline]
     pub fn put<K : AsLmdbBytes + ?Sized, V : AsLmdbBytes + ?Sized>(
         &mut self, db: &Database, key: &K, value: &V,
         flags: put::Flags) -> Result<()>
@@ -927,6 +934,7 @@ impl<'txn> WriteAccessor<'txn> {
     /// txn.commit().unwrap();
     /// # }
     /// ```
+    #[inline]
     pub fn put_reserve<K : AsLmdbBytes + ?Sized,
                        V : FromReservedLmdbBytes + Sized>(
         &mut self, db: &Database, key: &K, flags: put::Flags) -> Result<&mut V>
@@ -974,6 +982,7 @@ impl<'txn> WriteAccessor<'txn> {
     /// txn.commit().unwrap();
     /// # }
     /// ```
+    #[inline]
     pub fn put_reserve_array<K : AsLmdbBytes + ?Sized, V : LmdbRaw>(
         &mut self, db: &Database, key: &K, count: usize, flags: put::Flags)
         -> Result<&mut [V]>
@@ -1000,6 +1009,7 @@ impl<'txn> WriteAccessor<'txn> {
     /// ## Unsafety
     ///
     /// The caller must ensure that `size` is a valid size for `V`.
+    #[inline]
     pub unsafe fn put_reserve_unsized<K : AsLmdbBytes + ?Sized,
                                       V : FromReservedLmdbBytes + ?Sized>(
         &mut self, db: &Database, key: &K, size: usize, flags: put::Flags)
@@ -1046,6 +1056,7 @@ impl<'txn> WriteAccessor<'txn> {
     /// txn.commit().unwrap();
     /// # }
     /// ```
+    #[inline]
     pub fn del_key<K : AsLmdbBytes + ?Sized>(
         &mut self, db: &Database, key: &K) -> Result<()>
     {
@@ -1091,6 +1102,7 @@ impl<'txn> WriteAccessor<'txn> {
     /// txn.commit().unwrap();
     /// # }
     /// ```
+    #[inline]
     pub fn del_item<K : AsLmdbBytes + ?Sized, V : AsLmdbBytes + ?Sized>(
         &mut self, db: &Database, key: &K, val: &V) -> Result<()>
     {
