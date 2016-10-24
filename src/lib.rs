@@ -239,7 +239,7 @@ macro_rules! lmdb_call {
     ($x:expr) => { {
         let code = $x;
         if 0 != code {
-            return Err($crate::Error { code: code });
+            return Err($crate::Error::Code(code));
         }
     } }
 }

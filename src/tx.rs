@@ -17,7 +17,7 @@ use ffi2;
 
 use env::{self, Environment, Stat};
 use dbi::{db, Database};
-use error::{self, Error, Result};
+use error::{Error, Result};
 use mdb_vals::*;
 use traits::*;
 use cursor::{self, Cursor, StaleCursor};
@@ -87,7 +87,7 @@ pub mod put {
             ///   access.put(&db, "Fruit", "Durian", lmdb::put::Flags::empty()).unwrap();
             ///
             ///   let mut cursor = txn.cursor(&db).unwrap();
-            ///   assert_eq!(Err(lmdb::Error { code: lmdb::error::KEYEXIST }),
+            ///   assert_eq!(Err(lmdb::Error::Code(lmdb::error::KEYEXIST)),
             ///              cursor.put(&mut access, "Fruit", "Durian",
             ///                         lmdb::put::NODUPDATA));
             ///   assert_eq!(("Fruit", "Durian"), cursor.get_current(&access).unwrap());
@@ -531,7 +531,7 @@ impl<'env> ConstTransaction<'env> {
         if self as *const ConstTransaction<'env> !=
             cursor::txn_ref(cursor) as *const ConstTransaction<'env>
         {
-            Err(Error { code: error::MISMATCH })
+            Err(Error::Mismatch)
         } else {
             Ok(())
         }
@@ -625,7 +625,7 @@ impl<'env> ReadTransaction<'env> {
         if self.env as *const Environment !=
             cursor::env_ref(&cursor) as *const Environment
         {
-            return Err(Error { code: error::MISMATCH });
+            return Err(Error::Mismatch)
         }
 
         unsafe {

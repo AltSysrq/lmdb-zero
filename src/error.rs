@@ -17,32 +17,6 @@ use libc::c_int;
 use ffi;
 use ffi2;
 
-/// A string path was given which contains a `NUL` byte.
-///
-/// This is not a standard LMDB error code; it is produced by the FFI layer
-/// here when translating rust strings to C strings.
-pub const NULSTR: c_int = ffi2::MDB_LAST_ERRCODE + 1;
-/// An attempt was made to open a database which is already open.
-///
-/// This is not a standard LMDB error code; LMDB in fact permits opening
-/// the same database one time, and silently returns the same handle to it.
-/// lmdb-zero detects such cases and returns this error instead.
-pub const REOPENED: c_int = NULSTR + 1;
-/// An attempt was made to use two items together which cannot be used
-/// together.
-///
-/// For example, trying to use a cursor from one transaction to access data
-/// in another.
-///
-/// This is not a standard LMDB error code, and arises due to some
-/// functions needing to take redundant inputs to make borrow checking
-/// work.
-pub const MISMATCH: c_int = REOPENED + 1;
-/// When retrieving a value, `FromLmdbBytes` returned `None`.
-///
-/// This is not a standard LMDB error code, but arises when reading types
-/// from the database which have invalid values.
-pub const VAL_REJECTED: c_int = MISMATCH + 1;
 /// key/data pair already exists
 pub const KEYEXIST: c_int = ffi::MDB_KEYEXIST;
 /// key/data pair not found (EOF)
@@ -90,13 +64,28 @@ pub const BAD_VALSIZE: c_int = ffi::MDB_BAD_VALSIZE;
 pub const BAD_DBI: c_int = ffi2::MDB_BAD_DBI;
 
 /// Error type returned by LMDB.
-#[derive(Clone,Copy,PartialEq,Eq,Hash)]
-pub struct Error {
-    /// The raw error code.
+#[derive(Clone,PartialEq,Eq,Hash)]
+pub enum Error {
+    /// A basic error code returned by LMDB.
     ///
-    /// This is generally expected to be a constant defined in the `errors`
+    /// The code is generally expected to be a constant defined in the `errors`
     /// module if negative, or a raw platform error code if positive.
-    pub code: c_int,
+    Code(c_int),
+    /// A string path was given which contains a `NUL` byte.
+    NulStr,
+    /// An attempt was made to open a database which is already open.
+    Reopened,
+    /// An attempt was made to use two items together which cannot be used
+    /// together.
+    ///
+    /// For example, trying to use a cursor from one transaction to access data
+    /// in another.
+    Mismatch,
+    /// A value conversion was rejected. A message explaining why is included.
+    ValRejected(String),
+    // Prevent external code from exhaustively matching on this enum.
+    #[doc(hidden)]
+    _NonExhaustive
 }
 
 /// Result type returned for all calls that can fail.
@@ -104,36 +93,52 @@ pub type Result<T> = result::Result<T, Error>;
 
 impl Error {
     fn strerror(&self) -> &'static str {
-        unsafe {
-            if NULSTR == self.code {
-                "NUL byte in path"
-            } else if REOPENED == self.code {
-                "Attempt to reopen database"
-            } else if MISMATCH == self.code {
-                "Items from different env/database used together"
-            } else if VAL_REJECTED == self.code {
-                "Value conversion failed"
-            } else {
-                let raw = ffi::mdb_strerror(self.code);
+        match *self {
+            Error::NulStr => "NUL byte in path",
+            Error::Reopened => "Attempt to reopen database",
+            Error::Mismatch =>
+                "Items from different env/database used together",
+            Error::ValRejected(..) =>
+                "Value conversion failed",
+            Error::_NonExhaustive => "Error::_NonExhaustive",
+            Error::Code(code) => unsafe {
+                let raw = ffi::mdb_strerror(code);
                 if raw.is_null() {
                     "(null)"
                 } else {
                     CStr::from_ptr(raw).to_str().unwrap_or("(unknown)")
                 }
-            }
+            },
         }
     }
 }
 
 impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> result::Result<(), fmt::Error> {
-        write!(f, "Error({}, '{}')", self.code, self.strerror())
+        match *self {
+            Error::NulStr =>
+                write!(f, "Error::NulStr"),
+            Error::Reopened =>
+                write!(f, "Error::Reopened"),
+            Error::Mismatch =>
+                write!(f, "Error::Mismatch"),
+            Error::ValRejected(ref why) =>
+                write!(f, "Error::ValRejected({:?})", why),
+            Error::Code(code) =>
+                write!(f, "Error::Code({}, '{}')", code, self.strerror()),
+            Error::_NonExhaustive =>
+                write!(f, "Error::_NonExhaustive"),
+        }
     }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> result::Result<(), fmt::Error> {
-        write!(f, "{}", self.strerror())
+        match *self {
+            Error::ValRejected(ref why) =>
+                write!(f, "Value conversion failed: {}", why),
+            _ => write!(f, "{}", self.strerror()),
+        }
     }
 }
 
@@ -145,7 +150,7 @@ impl StdError for Error {
 
 impl From<NulError> for Error {
     fn from(_: NulError) -> Self {
-        Error { code: NULSTR }
+        Error::NulStr
     }
 }
 
@@ -156,14 +161,14 @@ pub trait LmdbResultExt {
 
     /// Lift "not found" errors to `None`.
     ///
-    /// If `Ok(val)`, return `Ok(Some(val))`. If `Err` but the code is
-    /// `NOTFOUND`, return `Ok(None)`. Otherwise, return self.
+    /// If `Ok(val)`, return `Ok(Some(val))`. If `Err` but the error is
+    /// `Error::Code(NOTFOUND)`, return `Ok(None)`. Otherwise, return self.
     fn to_opt(self) -> Result<Option<Self::Inner>>;
 
     /// Suppress `KEYEXIST` errors.
     ///
-    /// If this is `Err` and the code is `KEYEXIST`, switch to `Ok` with the
-    /// given inner value.
+    /// If this is `Err` and the error is `Error::Code(KEYEXIST)`, switch to
+    /// `Ok` with the given inner value.
     fn ignore_exists(self, inner: Self::Inner) -> Self;
 }
 
@@ -173,7 +178,7 @@ impl<T> LmdbResultExt for Result<T> {
     fn to_opt(self) -> Result<Option<T>> {
         match self {
             Ok(val) => Ok(Some(val)),
-            Err(error) if NOTFOUND == error.code => Ok(None),
+            Err(Error::Code(code)) if NOTFOUND == code => Ok(None),
             Err(error) => Err(error),
         }
     }
@@ -181,7 +186,7 @@ impl<T> LmdbResultExt for Result<T> {
     fn ignore_exists(self, inner: T) -> Self {
         match self {
             Ok(val) => Ok(val),
-            Err(error) if KEYEXIST == error.code => Ok(inner),
+            Err(Error::Code(code)) if KEYEXIST == code => Ok(inner),
             Err(error) => Err(error),
         }
     }

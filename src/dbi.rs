@@ -15,7 +15,7 @@ use libc::c_int;
 use ffi;
 
 use env::{self, Environment};
-use error::{self, Error, Result};
+use error::{Error, Result};
 use mdb_vals::*;
 use traits::*;
 use tx::TxHandle;
@@ -519,7 +519,7 @@ impl<'a> Database<'a> {
     /// commits it on success.
     ///
     /// One may not open the same database handle multiple times. Attempting to
-    /// do so will result in the `REOPENED` error.
+    /// do so will result in the `Error::Reopened` error.
     ///
     /// ## Examples
     ///
@@ -594,7 +594,7 @@ impl<'a> Database<'a> {
                 options.flags.bits(), &mut raw));
 
             if !locked_dbis.insert(raw) {
-                return Err(Error { code: error::REOPENED });
+                return Err(Error::Reopened)
             }
 
             if let Some(fun) = options.key_cmp {
@@ -668,7 +668,7 @@ impl<'a> Database<'a> {
         if self.db.env as *const Environment !=
             other_env as *const Environment
         {
-            Err(Error { code: error::MISMATCH })
+            Err(Error::Mismatch)
         } else {
             Ok(())
         }

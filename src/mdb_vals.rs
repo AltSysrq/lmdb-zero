@@ -14,7 +14,7 @@ use libc::{self, c_void};
 
 use ffi;
 
-use error::{self, Error, Result};
+use error::{Error, Result};
 use traits::*;
 
 pub const EMPTY_VAL: ffi::MDB_val = ffi::MDB_val {
@@ -43,7 +43,7 @@ pub fn from_val<'a, O, V : FromLmdbBytes + ?Sized>(
     _owner: &'a O, val: &ffi::MDB_val) -> Result<&'a V>
 {
     let bytes = mdb_val_as_bytes(_owner, val);
-    V::from_lmdb_bytes(bytes).ok_or(Error { code: error::VAL_REJECTED })
+    V::from_lmdb_bytes(bytes).ok_or(Error::ValRejected(String::new()))
 }
 
 pub unsafe fn from_reserved<'a, O, V : FromReservedLmdbBytes + ?Sized>(

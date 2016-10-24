@@ -14,7 +14,6 @@ use libc::{c_char, c_int, c_uint, size_t};
 use ffi;
 
 pub const MDB_BAD_DBI: c_int = -30780;
-pub const MDB_LAST_ERRCODE: c_int = MDB_BAD_DBI;
 pub const MDB_CP_COMPACT: c_uint = 1;
 
 extern "C" {
