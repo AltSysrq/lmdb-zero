@@ -43,7 +43,12 @@ use traits::*;
 #[derive(Clone,Copy)]
 pub struct Unaligned<T : LmdbRawIfUnaligned>(T);
 
-unsafe impl<T : LmdbRawIfUnaligned> LmdbRaw for Unaligned<T> { }
+unsafe impl<T : LmdbRawIfUnaligned> LmdbRaw for Unaligned<T> {
+    fn reported_type() -> String {
+        format!("Unaligned<{}>", T::reported_type())
+    }
+}
+
 unsafe impl<T : LmdbRawIfUnaligned + LmdbOrdKeyIfUnaligned> LmdbOrdKey
 for Unaligned<T> {
     fn ordered_by_bytes() -> bool { T::ordered_by_bytes() }
