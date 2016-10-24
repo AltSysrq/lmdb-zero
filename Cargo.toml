@@ -1,6 +1,6 @@
 [package]
 name = "lmdb-zero"
-version = "0.2.2"
+version = "0.3.0"
 authors = ["FullContact, Inc"]
 license = "MIT/Apache-2.0"
 readme = "README.md"

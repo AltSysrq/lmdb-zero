@@ -48,6 +48,10 @@ here.
 
 ## Changelog
 
+**0.3.0**: **Breaking Changes** to the API, see section below. Migration is
+  expected to be easy for most use-cases. Slight performance improvement due to
+  additions of `#[inline]`.
+
 **0.2.2**: `ResetTransaction` is now actually public, making that part of the
   API more accessible. Add documentation for lifetimes.
 
@@ -58,6 +62,35 @@ here.
 **0.2.0**: Switch from `lmdb-sys` to newer `liblmdb-sys`.
 
 **0.1.0**: Initial release.
+
+### Breaking Changes in 0.3.0
+
+`lmdb::Error` has been completely reworked. It is now an enum with the
+lmdb-zero errors cleanly separated from native LMDB errors. `ValRejected` now
+includes an error message.
+
+`FromLmdbBytes.from_lmdb_bytes()` now returns a `Result<&Self, String>` instead
+of an `Option`. This is mainly to make alignment issues less subtle and point
+people directly to advice on how to fix the problem, but should be able to make
+other things clearer as well.
+
+The mostly untested and somewhat questionable `lax_alignment` feature has been
+dropped. `LmdbRaw` now always enforces alignment requirements. Client code
+which wishes to operate on misaligned values which cannot use the `Unaligned`
+or `#[repr(packed)]` solutions will need to provide its own `FromLmdbBytes`
+implementations.
+
+The primitive types which have alignment requirements (eg, `i32`, `u64`) are no
+longer `LmdbRaw`, as this made it too easy to write code depending on
+happenstance to align the values correctly. Client code now _must_ wrap them in
+`Unaligned` to read them directly, or else provide its own unit structs if it
+has other needs. Note that these types and their arrays are still
+`AsLmdbBytes`.
+
+Unfortunately, as a side-effect of the above, `Wrapping<u8>` and `Wrapping<i8>`
+are no longer `LmdbRaw` or `LmdbOrdKey`, but instead only
+`LmdbRawIfUnaligned` and `LmdbOrdKeyIfUnaligned`. Wrapping these in `Unalinged`
+will work in most cases without overhead.
 
 ## Contribution
 
