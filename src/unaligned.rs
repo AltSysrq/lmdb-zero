@@ -22,13 +22,23 @@ use traits::*;
 /// not make `T` itself packed, so the same discussion with respect to padding
 /// in the `LmdbRaw` documentation applies here as well.
 ///
-/// If you are willing to constrain yourself to architectures with lax
-/// alignment, such as AMD64/x86, you can instead use the `lax_alignment`
-/// feature to remove `LmdbRaw`'s alignment test.
-///
 /// There is no way to get a reference to the contained value, as Rust
 /// currently has no way to express that the reference may be misaligned. (See
 /// also https://github.com/rust-lang/rust/issues/27060.)
+///
+/// ### Example
+///
+/// ```
+/// use lmdb_zero as lmdb;
+/// use lmdb_zero::Unaligned as U;
+///
+/// fn get_a_u64(env: &lmdb::Environment, db: &lmdb::Database,
+///              key: &str) -> u64 {
+///   let tx = lmdb::ReadTransaction::new(env).unwrap();
+///   let access = tx.access();
+///   access.get::<str, U<u64>>(db, key).unwrap().get()
+/// }
+/// ```
 #[repr(packed)]
 #[derive(Clone,Copy)]
 pub struct Unaligned<T : LmdbRaw>(T);

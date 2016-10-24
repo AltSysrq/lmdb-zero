@@ -103,13 +103,33 @@ pub trait FromReservedLmdbBytes {
 /// does not satisfy the alignment of the type. This means that behaviour will
 /// be unpredictable if the required alignment of the struct is greater than 1,
 /// as conversions will pass or fail depending on where LMDB decides to place
-/// the value. If this is a problem, you can make your structure
-/// `#[repr(packed)]` to give it an alignment of 1 (but see also below).
-/// Primitive types can be wrapped in `Unaligned` to achieve the same effect.
+/// the value.
 ///
-/// If you only intend to support architectures with lax alignments (eg,
-/// AMD64), you can build `lmdb-zero` with the `lax_alignment` feature, which
-/// eliminates this alignment test, but is not strictly safe.
+/// If you run into this issue, there are several ways to work around it.
+///
+/// ### Use `Unaligned`
+///
+/// Instead of directly reading and writing the bare type, wrap it in
+/// `lmdb_zero::Unaligned`. This adds no overhead in and of itself and removes
+/// the alignment restriction, but heavily restricts what can be done with a
+/// reference without copying it.
+///
+/// This is almost always the best option if your type fits in a register or
+/// two.
+///
+/// ### Make your structure `#[repr(C, packed)]`
+///
+/// If this is a problem, you can make your structure `#[repr(packed)]` to give
+/// it an alignment of 1 (but see also below about padding).
+///
+/// Note that it is possible to produce unsafe code using this approach even
+/// without the use of `unsafe`. See [this rust
+/// bug](https://github.com/rust-lang/rust/issues/27060).
+///
+/// ### Do it yourself
+///
+/// If you have unusual requirements, your best bet is to implement
+/// `FromLmdbBytes` and friends manually as needed.
 ///
 /// ## Unsafety
 ///
