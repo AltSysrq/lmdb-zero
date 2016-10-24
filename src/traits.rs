@@ -433,11 +433,6 @@ unsafe impl<V: LmdbOrdKey + LmdbRaw> LmdbOrdKey for Wrapping<V> {
 
 unsafe impl LmdbRaw for () { }
 
-#[cfg(lax_alignment)]
-const ALIGN_LAX: bool = true;
-#[cfg(not(lax_alignment))]
-const ALIGN_LAX: bool = false;
-
 impl<V : LmdbRaw> AsLmdbBytes for V {
     fn as_lmdb_bytes(&self) -> &[u8] {
         unsafe {
@@ -459,7 +454,7 @@ impl<V: LmdbRaw> FromLmdbBytes for V {
         }
 
         let misalign = (bytes.as_ptr() as usize) % align;
-        if !ALIGN_LAX && 0 != misalign {
+        if 0 != misalign {
             return Err(
                 format!("Type {} requires alignment {}, but byte array \
                          at {:08x} is misaligned by {} bytes \
@@ -505,7 +500,7 @@ impl<V : LmdbRaw> FromLmdbBytes for [V] {
         }
 
         let misalign = (bytes.as_ptr() as usize) % align;
-        if !ALIGN_LAX && 0 != misalign {
+        if 0 != misalign {
             return Err(
                 format!("Type [{}] requires alignment {}, but byte array \
                          at {:08x} is misaligned by {} bytes \
