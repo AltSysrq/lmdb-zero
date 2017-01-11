@@ -453,10 +453,11 @@ impl<V: LmdbRaw> FromLmdbBytes for V {
             return Err(
                 format!("Type {} requires alignment {}, but byte array \
                          at {:08x} is misaligned by {} bytes \
-                         (see https://api.fullcontact.com/v3/docs/rustdoc/\
+                         (see https://docs.rs/lmdb-zero/{}/\
                          lmdb_zero/traits/trait.LmdbRaw.html#alignment)",
                         V::reported_type(), align,
-                        (bytes.as_ptr() as usize), misalign));
+                        (bytes.as_ptr() as usize), misalign,
+                        env!("CARGO_PKG_VERSION")));
         }
 
         Ok(unsafe {
@@ -499,10 +500,11 @@ impl<V : LmdbRaw> FromLmdbBytes for [V] {
             return Err(
                 format!("Type [{}] requires alignment {}, but byte array \
                          at {:08x} is misaligned by {} bytes \
-                         (see https://api.fullcontact.com/v3/docs/rustdoc/\
+                         (see https://docs.rs/lmdb-zero/{}/\
                          lmdb_zero/traits/trait.LmdbRaw.html#alignment)",
                         V::reported_type(), align,
-                        (bytes.as_ptr() as usize), misalign));
+                        (bytes.as_ptr() as usize), misalign,
+                        env!("CARGO_PKG_VERSION")));
         }
 
         unsafe {

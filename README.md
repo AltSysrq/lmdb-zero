@@ -4,7 +4,7 @@ lmdb-zero is a near-zero-cost wrapper around [LMDB](http://lmdb.tech/) designed
 to allow using the full range of features offered by LMDB while keeping it
 reasonably easy to write safe programs.
 
-[Documentation](https://api.fullcontact.com/v3/docs/rustdoc/lmdb_zero/index.html)
+[Documentation](https://docs.rs/lmdb-zero)
 
 ## Why _another_ LMDB library?
 
@@ -48,6 +48,9 @@ here.
 
 ## Changelog
 
+**0.3.1**: Metadata updates to reflect change of crate ownership. No software
+  changes were made in this version.
+
 **0.3.0**: **Breaking Changes** to the API, see section below. Migration is
   expected to be easy for most use-cases. Slight performance improvement due to
   additions of `#[inline]`.
@@ -57,7 +60,7 @@ here.
 
 **0.2.1**: Fix use-after-free when passing database name to `mdb_dbi_open`. Fix
  calling `mdb_txn_abort` after transaction commit fails.
- [#1](https://github.com/fullcontact/lmdb-zero/pull/1).
+ [#1](https://github.com/AltSysrq/lmdb-zero/pull/1).
 
 **0.2.0**: Switch from `lmdb-sys` to newer `liblmdb-sys`.
 
