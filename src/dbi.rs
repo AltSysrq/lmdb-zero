@@ -664,6 +664,43 @@ impl<'a> Database<'a> {
         Ok(())
     }
 
+    /// Returns a reference to the `Environment` to which this `Database`
+    /// belongs.
+    ///
+    /// This can be used to elide needing to pass both an `&Environment` and an
+    /// `&Database` around, but is also useful for the use-case wherein the
+    /// `Database` owns the `Environment`.
+    ///
+    /// Because this may borrow an `Environment` owned by this `Database`, the
+    /// lifetime of the returned reference is dependent on self rather than
+    /// being `'env`. (In fact, `'env` is usually `'static` if the
+    /// `Environment` is owned by the `Database`, so returning `&'env Environment`
+    /// is impossible anyway.)
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # #[allow(unused_vars)]
+    /// # fn main() {
+    /// let env: lmdb::Environment = create_env();
+    /// // We only want one `Database`, so don't bother keeping both variables
+    /// // around and instead let the `Database` own the `Environment`.
+    /// let db = lmdb::Database::open(
+    ///   env, None, &lmdb::DatabaseOptions::defaults()).unwrap();
+    ///
+    /// // `env` has been consumed, but we can still do useful things by
+    /// // getting a reference to the inner value.
+    /// let txn = lmdb::ReadTransaction::new(db.env()).unwrap();
+    ///
+    /// // Do stuff with `txn`, etc.
+    /// # }
+    /// ```
+    #[inline]
+    pub fn env(&self) -> &Environment {
+        &*self.db.env
+    }
+
     /// Checks that `other_env` is the same as the environment on this
     /// `Database`.
     ///
