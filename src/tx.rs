@@ -1,4 +1,5 @@
 // Copyright 2016 FullContact, Inc
+// Copyright 2017 Jason Lingle
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -14,6 +15,7 @@ use libc::c_uint;
 
 use ffi;
 use ffi2;
+use supercow::{Supercow, NonSyncSupercow};
 
 use env::{self, Environment, Stat};
 use dbi::{db, Database};
@@ -314,7 +316,7 @@ impl TxHandle {
 /// parameter, eg `&'x lmdb::ConstTransaction<'x>`.
 #[derive(Debug)]
 pub struct ConstTransaction<'env> {
-    env: &'env Environment,
+    env: NonSyncSupercow<'env, Environment>,
     tx: TxHandle,
     has_yielded_accessor: Cell<bool>,
 }
@@ -433,13 +435,16 @@ pub struct ConstAccessor<'txn>(&'txn ConstTransaction<'txn>);
 pub struct WriteAccessor<'txn>(ConstAccessor<'txn>);
 
 impl<'env> ConstTransaction<'env> {
-    fn new<'outer: 'env>(env: &'env Environment,
-                         parent: Option<&'env mut ConstTransaction<'outer>>,
-                         flags: c_uint) -> Result<Self> {
+    fn new<'outer: 'env, E>(env: E,
+                            parent: Option<&'env mut ConstTransaction<'outer>>,
+                            flags: c_uint) -> Result<Self>
+    where E : Into<NonSyncSupercow<'env, Environment>> {
+        let env : NonSyncSupercow<'env, Environment> = env.into();
+
         let mut rawtx: *mut ffi::MDB_txn = ptr::null_mut();
         unsafe {
             lmdb_call!(ffi::mdb_txn_begin(
-                env::env_ptr(env), parent.map_or(ptr::null_mut(), |p| p.tx.0),
+                env::env_ptr(&env), parent.map_or(ptr::null_mut(), |p| p.tx.0),
                 flags, &mut rawtx));
         }
 
@@ -484,16 +489,19 @@ impl<'env> ConstTransaction<'env> {
     /// Creates a new cursor scoped to this transaction, bound to the given
     /// database.
     #[inline]
-    pub fn cursor<'txn, 'db>(&'txn self, db: &'db Database)
-                             -> Result<Cursor<'txn,'db>> {
-        try!(db.assert_same_env(self.env));
+    pub fn cursor<'txn, 'db, DB>(&'txn self, db: DB)
+                                 -> Result<Cursor<'txn,'db>>
+    where DB : Into<Supercow<'db, Database<'db>>> {
+        let db = db.into();
+        try!(db.assert_same_env(&self.env));
 
         let mut raw: *mut ffi::MDB_cursor = ptr::null_mut();
         unsafe {
             lmdb_call!(ffi::mdb_cursor_open(self.tx.0, db.dbi(), &mut raw));
         }
 
-        Ok(unsafe { cursor::create_cursor(raw, self) })
+        Ok(unsafe { cursor::create_cursor(raw, Supercow::borrowed(self),
+                                          Supercow::phantom(db)) })
     }
 
     /// Returns the internal id of this transaction.
@@ -505,7 +513,7 @@ impl<'env> ConstTransaction<'env> {
 
     /// Retrieves statistics for a database.
     pub fn db_stat(&self, db: &Database) -> Result<Stat> {
-        try!(db.assert_same_env(self.env));
+        try!(db.assert_same_env(&self.env));
 
         unsafe {
             let mut raw: ffi::MDB_stat = mem::zeroed();
@@ -516,7 +524,7 @@ impl<'env> ConstTransaction<'env> {
 
     /// Retrieve the DB flags for a database handle.
     pub fn db_flags(&self, db: &Database) -> Result<db::Flags> {
-        try!(db.assert_same_env(self.env));
+        try!(db.assert_same_env(&self.env));
 
         let mut raw: c_uint = 0;
         unsafe {
@@ -526,10 +534,10 @@ impl<'env> ConstTransaction<'env> {
     }
 
     #[inline]
-    fn assert_sensible_cursor<'a>(&self, cursor: &Cursor<'env,'a>)
-                                  -> Result<()> {
-        if self as *const ConstTransaction<'env> !=
-            cursor::txn_ref(cursor) as *const ConstTransaction<'env>
+    fn assert_sensible_cursor(&self, cursor: &Cursor)
+                              -> Result<()> {
+        if self as *const ConstTransaction !=
+            cursor::txn_ref(cursor) as *const ConstTransaction
         {
             Err(Error::Mismatch)
         } else {
@@ -569,7 +577,8 @@ impl<'env> ReadTransaction<'env> {
     /// transaction at a time. If `NOTLS` is in use, this does not apply to
     /// read-only transactions. Attempting to open a read-only transaction
     /// while the current thread holds a read-write transaction will deadlock.
-    pub fn new(env: &'env Environment) -> Result<Self> {
+    pub fn new<E>(env: E) -> Result<Self>
+    where E : Into<NonSyncSupercow<'env, Environment>> {
         Ok(ReadTransaction(try!(ConstTransaction::new(
             env, None, ffi::MDB_RDONLY))))
     }
@@ -613,7 +622,9 @@ impl<'env> ReadTransaction<'env> {
                                    -> Result<StaleCursor<'db>>
     where 'env: 'db {
         try!(self.assert_sensible_cursor(&cursor));
-        Ok(cursor::to_stale(cursor, self.env))
+        let env = Supercow::clone_non_owned(&self.env)
+            .expect("Cannot use owned `Environment` with `dissoc_cursor`");
+        Ok(cursor::to_stale(cursor, env))
     }
 
     /// Associates a saved read-only with this transaction.
@@ -622,7 +633,7 @@ impl<'env> ReadTransaction<'env> {
     /// the same database that it was previously.
     pub fn assoc_cursor<'txn,'db>(&'txn self, cursor: StaleCursor<'db>)
                                   -> Result<Cursor<'txn,'db>> {
-        if self.env as *const Environment !=
+        if &*self.env as *const Environment !=
             cursor::env_ref(&cursor) as *const Environment
         {
             return Err(Error::Mismatch)
@@ -632,7 +643,9 @@ impl<'env> ReadTransaction<'env> {
             lmdb_call!(ffi::mdb_cursor_renew(
                 self.tx.0, cursor::stale_cursor_ptr(&cursor)));
         }
-        Ok(cursor::from_stale(cursor, self))
+        let self_as_const: &ConstTransaction = &*self;
+        Ok(cursor::from_stale(cursor, NonSyncSupercow::borrowed(
+            self_as_const)))
     }
 
     /// Resets this transaction, releasing most of its resources but allowing
@@ -712,7 +725,8 @@ impl<'env> WriteTransaction<'env> {
     /// read-write transaction at a time (even if `NOTLS` is in use --- trying
     /// to start two top-level read-write transactions on the same thread will
     /// deadlock).
-    pub fn new(env: &'env Environment) -> Result<Self> {
+    pub fn new<E>(env: E) -> Result<Self>
+    where E : Into<NonSyncSupercow<'env, Environment>> {
         Ok(WriteTransaction(try!(ConstTransaction::new(env, None, 0))))
     }
 
@@ -795,7 +809,7 @@ impl<'env> WriteTransaction<'env> {
         // rules ensure that they've destroyed the old one.
         self.has_yielded_accessor.set(false);
 
-        let env = self.0.env;
+        let env = Supercow::share(&mut self.0.env);
         Ok(WriteTransaction(try!(ConstTransaction::new(
             env, Some(&mut*self), 0))))
     }
@@ -860,7 +874,7 @@ impl<'txn> ConstAccessor<'txn> {
     }
 
     fn env(&self) -> &Environment {
-        self.0.env
+        &*self.0.env
     }
 }
 

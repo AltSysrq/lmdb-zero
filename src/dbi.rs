@@ -1,4 +1,5 @@
 // Copyright 2016 FullContact, Inc
+// Copyright 2017 Jason Lingle
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -13,6 +14,7 @@ use std::ptr;
 use libc::c_int;
 
 use ffi;
+use supercow::Supercow;
 
 use env::{self, Environment};
 use error::{Error, Result};
@@ -275,13 +277,13 @@ pub mod db {
 
 #[derive(Debug)]
 struct DbHandle<'a> {
-    env: &'a Environment,
+    env: Supercow<'a, Environment>,
     dbi: ffi::MDB_dbi,
 }
 
 impl<'a> Drop for DbHandle<'a> {
     fn drop(&mut self) {
-        env::dbi_close(self.env, self.dbi);
+        env::dbi_close(&self.env, self.dbi);
     }
 }
 
@@ -571,9 +573,12 @@ impl<'a> Database<'a> {
     /// }
     /// # }
     /// ```
-    pub fn open(env: &'a Environment, name: Option<&str>,
-                options: &DatabaseOptions)
-                -> Result<Database<'a>> {
+    pub fn open<E>(env: E, name: Option<&str>,
+                   options: &DatabaseOptions)
+                   -> Result<Database<'a>>
+    where E : Into<Supercow<'a, Environment>> {
+        let env: Supercow<'a, Environment> = env.into();
+
         let mut raw: ffi::MDB_dbi = 0;
         let name_cstr = match name {
             None => None,
@@ -582,12 +587,12 @@ impl<'a> Database<'a> {
         let raw = unsafe {
             // Locking the hash set here is also used to serialise calls to
             // `mdb_dbi_open()`, which are not permitted to be concurrent.
-            let mut locked_dbis = env::env_open_dbis(env).lock()
+            let mut locked_dbis = env::env_open_dbis(&env).lock()
                 .expect("open_dbis lock poisoned");
 
             let mut raw_tx: *mut ffi::MDB_txn = ptr::null_mut();
             lmdb_call!(ffi::mdb_txn_begin(
-                env::env_ptr(env), ptr::null_mut(), 0, &mut raw_tx));
+                env::env_ptr(&env), ptr::null_mut(), 0, &mut raw_tx));
             let mut wrapped_tx = TxHandle(raw_tx); // For auto-closing etc
             lmdb_call!(ffi::mdb_dbi_open(
                 raw_tx, name_cstr.as_ref().map_or(ptr::null(), |s| s.as_ptr()),
@@ -654,7 +659,7 @@ impl<'a> Database<'a> {
     /// # }
     /// ```
     pub fn delete(self) -> Result<()> {
-        try!(env::dbi_delete(self.db.env, self.db.dbi));
+        try!(env::dbi_delete(&self.db.env, self.db.dbi));
         mem::forget(self.db);
         Ok(())
     }
@@ -665,7 +670,7 @@ impl<'a> Database<'a> {
     /// If it matches, returns `Ok(())`; otherwise, returns `Err`.
     pub fn assert_same_env(&self, other_env: &Environment)
                            -> Result<()> {
-        if self.db.env as *const Environment !=
+        if &*self.db.env as *const Environment !=
             other_env as *const Environment
         {
             Err(Error::Mismatch)

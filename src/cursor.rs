@@ -1,4 +1,5 @@
 // Copyright 2016 FullContact, Inc
+// Copyright 2017 Jason Lingle
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -6,17 +7,18 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use libc::{self, c_void};
 
 use ffi;
+use supercow::{NonSyncSupercow, Phantomcow};
 
 use env::Environment;
 use error::Result;
 use mdb_vals::*;
 use traits::*;
+use dbi::Database;
 use tx::{put, del, ConstAccessor, ConstTransaction, WriteAccessor};
 use tx::assert_sensible_cursor;
 
@@ -57,6 +59,7 @@ impl Drop for CursorHandle {
 /// }
 /// fn covariance<'a, 'txn: 'a, 'db: 'a>(c: lmdb::Cursor<'txn,'db>)
 ///                                     -> CursorOwner<'a> {
+///   let c: lmdb::Cursor<'a, 'a> = c;
 ///   CursorOwner { cursor: c }
 /// }
 /// ```
@@ -85,23 +88,26 @@ impl Drop for CursorHandle {
 #[derive(Debug)]
 pub struct Cursor<'txn,'db> {
     cursor: CursorHandle,
-    txn: &'txn ConstTransaction<'txn>,
-    _db: PhantomData<&'db ()>,
+    txn: NonSyncSupercow<'txn, ConstTransaction<'txn>>,
+    _db: Phantomcow<'db, Database<'db>>,
 }
 
 // Used by transactions to construct/query cursors
-pub unsafe fn create_cursor<'txn, 'db>(raw: *mut ffi::MDB_cursor,
-                                       txn: &'txn ConstTransaction<'txn>)
-                                       -> Cursor<'txn, 'db> {
+pub unsafe fn create_cursor<'txn, 'db>(
+    raw: *mut ffi::MDB_cursor,
+    txn: NonSyncSupercow<'txn, ConstTransaction<'txn>>,
+    db: Phantomcow<'db, Database<'db>>)
+    -> Cursor<'txn, 'db>
+{
     Cursor {
         cursor: CursorHandle(raw),
         txn: txn,
-        _db: PhantomData,
+        _db: db,
     }
 }
-pub fn txn_ref<'txn,'db>(cursor: &Cursor<'txn,'db>)
-                         -> &'txn ConstTransaction<'txn> {
-    cursor.txn
+pub fn txn_ref<'a,'txn: 'a,'db>(cursor: &'a Cursor<'txn,'db>)
+                                -> &'a ConstTransaction<'txn> {
+    &*cursor.txn
 }
 
 /// A read-only cursor which has been dissociated from its original
@@ -111,31 +117,32 @@ pub fn txn_ref<'txn,'db>(cursor: &Cursor<'txn,'db>)
 #[derive(Debug)]
 pub struct StaleCursor<'db> {
     cursor: CursorHandle,
-    env: &'db Environment,
-    _db: PhantomData<&'db ()>,
+    env: NonSyncSupercow<'db, Environment>,
+    _db: Phantomcow<'db, Database<'db>>,
 }
 
 // Internal
-pub fn to_stale<'a,'db>(cursor: Cursor<'a,'db>, env: &'db Environment)
+pub fn to_stale<'a,'db>(cursor: Cursor<'a,'db>,
+                        env: NonSyncSupercow<'db, Environment>)
                         -> StaleCursor<'db> {
     StaleCursor {
         cursor: cursor.cursor,
         env: env,
-        _db: PhantomData,
+        _db: cursor._db,
     }
 }
 pub fn from_stale<'txn,'db>(stale: StaleCursor<'db>,
-                            txn: &'txn ConstTransaction<'txn>)
+                            txn: NonSyncSupercow<'txn, ConstTransaction<'txn>>)
                             -> Cursor<'txn,'db> {
     Cursor {
         cursor: stale.cursor,
         txn: txn,
-        _db: PhantomData,
+        _db: stale._db,
     }
 }
 pub fn env_ref<'a,'db>(cursor: &'a StaleCursor<'db>)
                        -> &'a Environment {
-    cursor.env
+    &*cursor.env
 }
 pub fn stale_cursor_ptr<'db>(cursor: &StaleCursor<'db>)
                              -> *mut ffi::MDB_cursor {
