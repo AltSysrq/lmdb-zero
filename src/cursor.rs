@@ -218,15 +218,6 @@ pub fn to_stale<'a,'db>(cursor: Cursor<'a,'db>,
         _db: cursor._db,
     }
 }
-pub fn from_stale<'txn,'db>(stale: StaleCursor<'db>,
-                            txn: NonSyncSupercow<'txn, ConstTransaction<'txn>>)
-                            -> Cursor<'txn,'db> {
-    Cursor {
-        cursor: stale.cursor,
-        txn: txn,
-        _db: stale._db,
-    }
-}
 pub fn env_ref<'a,'db>(cursor: &'a StaleCursor<'db>)
                        -> &'a Environment {
     &*cursor.env
@@ -268,7 +259,8 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// handles.
     ///
     /// This is a low-level function intended only for use by implementations
-    /// of the `CreateCursor` trait.
+    /// of the `CreateCursor` trait. (There is nothing less safe about it being
+    /// low-level; it's simply inconvenient.)
     pub fn construct(
         txn: NonSyncSupercow<'txn, ConstTransaction<'txn>>,
         db: Supercow<'db, Database<'db>>)
@@ -284,6 +276,33 @@ impl<'txn,'db> Cursor<'txn,'db> {
 
         Ok(unsafe { create_cursor(raw, txn,
                                   Supercow::phantom(db)) })
+    }
+
+    /// Directly renew a `StaleCursor` into a functional `Cursor` using the
+    /// given database handle.
+    ///
+    /// This is a low-level function intended only for use by implementations
+    /// of the `AssocCursor` trait. (There is nothing less safe about it being
+    /// low-level; it's simply inconvenient.)
+    ///
+    /// It is an error if `txn` is not actually a `ReadTransaction`.
+    pub fn from_stale(
+        stale: StaleCursor<'db>,
+        txn: NonSyncSupercow<'txn, ConstTransaction<'txn>>)
+        -> Result<Self>
+    {
+        try!(tx::assert_in_env(&txn, env_ref(&stale)));
+
+        unsafe {
+            lmdb_call!(ffi::mdb_cursor_renew(
+                tx::txptr(&txn), stale_cursor_ptr(&stale)));
+        }
+
+        Ok(Cursor {
+            cursor: stale.cursor,
+            txn: txn,
+            _db: stale._db,
+        })
     }
 
     #[inline]

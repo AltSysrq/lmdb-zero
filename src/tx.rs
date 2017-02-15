@@ -559,6 +559,15 @@ pub fn assert_same_env(txn: &ConstTransaction, db: &Database)
     db.assert_same_env(&txn.env)
 }
 #[inline]
+pub fn assert_in_env(txn: &ConstTransaction, env: &Environment)
+                     -> Result<()> {
+    if env as *const Environment != &*txn.env as *const Environment {
+        Err(Error::Mismatch)
+    } else {
+        Ok(())
+    }
+}
+#[inline]
 pub fn txptr(txn: &ConstTransaction) -> *mut ffi::MDB_txn {
     txn.tx.0
 }
@@ -628,6 +637,55 @@ impl<'env> ReadTransaction<'env> {
     /// }
     /// # }
     /// ```
+    ///
+    /// ## Example — Shared ownership mode
+    ///
+    /// Cursors can also be dissociated and reassociated with transactions with
+    /// shared ownership mode. This can also include changing the ownership
+    /// mode. To be able to use shared ownership mode, make sure that the
+    /// `AssocCursor` trait is imported or else you will simply borrow the
+    /// inner transaction instead of taking a copy of the `Rc`, etc.
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// use std::sync::Arc;
+    ///
+    /// use lmdb::traits::{AssocCursor, CreateCursor};
+    ///
+    /// # fn main() {
+    /// // N.B. Unnecessary type and lifetime annotations included for clarity
+    /// let env: Arc<lmdb::Environment> = Arc::new(create_env());
+    /// let db: Arc<lmdb::Database<'static>> = Arc::new(lmdb::Database::open(
+    ///   env.clone(), None, &lmdb::DatabaseOptions::defaults()).unwrap());
+    ///
+    /// let mut saved_cursor: lmdb::StaleCursor<'static>;
+    /// {
+    ///   // `Arc` is unnecessary in this trivial example, but let's pretend
+    ///   // there was good use for this.
+    ///   let txn: Arc<lmdb::ReadTransaction> = Arc::new(
+    ///     lmdb::ReadTransaction::new(env.clone()).unwrap());
+    ///   let cursor: lmdb::Cursor<'static, 'static> =
+    ///     txn.cursor(db.clone()).unwrap();
+    ///
+    ///   // Do some stuff with `txn` and `cursor`
+    ///
+    ///   // We don't want to realloc `cursor` next time, so save it away
+    ///   saved_cursor = txn.dissoc_cursor(cursor).unwrap();
+    /// }
+    ///
+    /// {
+    ///   let txn: Arc<lmdb::ReadTransaction<'static>> =
+    ///     Arc::new(lmdb::ReadTransaction::new(env.clone()).unwrap());
+    ///   // Rebind the old cursor. It continues operating on `db`.
+    ///   let cursor: lmdb::Cursor<'static, 'static> =
+    ///     txn.assoc_cursor(saved_cursor).unwrap();
+    ///   // Do stuff with txn, cursor
+    ///
+    ///   // We can save the cursor away again
+    ///   saved_cursor = txn.dissoc_cursor(cursor).unwrap();
+    /// }
+    /// # }
+    /// ```
     pub fn dissoc_cursor<'txn,'db>(&self, cursor: Cursor<'txn,'db>)
                                    -> Result<StaleCursor<'db>>
     where 'env: 'db {
@@ -641,21 +699,19 @@ impl<'env> ReadTransaction<'env> {
     ///
     /// The cursor will be rebound to this transaction, but will continue using
     /// the same database that it was previously.
+    ///
+    /// This method is functionally equivalent to the method on `AssocCursor`
+    /// and exists for convenience and backwards-compatibility.
+    ///
+    /// If you have an, e.g., `Rc<ReadTransaction>` and want to get a
+    /// `Cursor<'static,'db>`, make sure you have the `AssocCursor` trait
+    /// imported so that the needed alternate implementations of this method
+    /// are available.
     pub fn assoc_cursor<'txn,'db>(&'txn self, cursor: StaleCursor<'db>)
                                   -> Result<Cursor<'txn,'db>> {
-        if &*self.env as *const Environment !=
-            cursor::env_ref(&cursor) as *const Environment
-        {
-            return Err(Error::Mismatch)
-        }
-
-        unsafe {
-            lmdb_call!(ffi::mdb_cursor_renew(
-                self.tx.0, cursor::stale_cursor_ptr(&cursor)));
-        }
-        let self_as_const: &ConstTransaction = &*self;
-        Ok(cursor::from_stale(cursor, NonSyncSupercow::borrowed(
-            self_as_const)))
+        let self_as_const: &'txn ConstTransaction = &*self;
+        Cursor::from_stale(cursor,
+                           NonSyncSupercow::borrowed(&*self_as_const))
     }
 
     /// Resets this transaction, releasing most of its resources but allowing

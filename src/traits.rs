@@ -25,7 +25,7 @@ use std::sync::Arc;
 use supercow::Supercow;
 
 use ::Ignore;
-use cursor::Cursor;
+use cursor::{Cursor, StaleCursor};
 use dbi::Database;
 use tx::{ConstTransaction, ReadTransaction, WriteTransaction};
 
@@ -147,6 +147,46 @@ impl<'txn> CreateCursor<'txn> for Arc<WriteTransaction<'static>> {
     where DB : Into<Supercow<'db, Database<'db>>> {
         Cursor::construct(Supercow::shared(self.clone().to_const()),
                           db.into())
+    }
+}
+
+/// Types of transaction references which can be used to renew `StaleCursor`s
+/// into functional `Cursor`s.
+///
+/// In most cases this is simply used as an extension trait (see the examples
+/// on `Cursor`). However, it can also be used to abstract over things that can
+/// be used to create `Cursor`s if so desired.
+///
+/// Implementations are provided for normal references to `ReadTransaction` as
+/// well as `Rc` and `Arc`. The latter two require the transaction's inner
+/// lifetime to be `'static`.
+pub trait AssocCursor<'txn> {
+    /// Associates a saved read-only with this transaction.
+    ///
+    /// The cursor will be rebound to this transaction, but will continue using
+    /// the same database that it was previously.
+    fn assoc_cursor<'db>(&self, cursor: StaleCursor<'db>)
+                         -> error::Result<Cursor<'txn,'db>>;
+}
+
+impl<'txn,'env: 'txn> AssocCursor<'txn> for &'txn ReadTransaction<'env> {
+    fn assoc_cursor<'db>(&self, cursor: StaleCursor<'db>)
+                         -> error::Result<Cursor<'txn,'db>> {
+        ReadTransaction::assoc_cursor(*self, cursor)
+    }
+}
+
+impl<'txn> AssocCursor<'txn> for Rc<ReadTransaction<'static>> {
+    fn assoc_cursor<'db>(&self, cursor: StaleCursor<'db>)
+                         -> error::Result<Cursor<'txn,'db>> {
+        Cursor::from_stale(cursor, Supercow::shared(self.clone().to_const()))
+    }
+}
+
+impl<'txn> AssocCursor<'txn> for Arc<ReadTransaction<'static>> {
+    fn assoc_cursor<'db>(&self, cursor: StaleCursor<'db>)
+                         -> error::Result<Cursor<'txn,'db>> {
+        Cursor::from_stale(cursor, Supercow::shared(self.clone().to_const()))
     }
 }
 
