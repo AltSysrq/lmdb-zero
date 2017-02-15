@@ -12,14 +12,14 @@ use std::ptr;
 use libc::{self, c_void};
 
 use ffi;
-use supercow::{NonSyncSupercow, Phantomcow};
+use supercow::{NonSyncSupercow, Supercow, Phantomcow};
 
 use env::Environment;
 use error::Result;
 use mdb_vals::*;
 use traits::*;
 use dbi::Database;
-use tx::{put, del, ConstAccessor, ConstTransaction, WriteAccessor};
+use tx::{self, put, del, ConstAccessor, ConstTransaction, WriteAccessor};
 use tx::assert_sensible_cursor;
 
 #[derive(Debug)]
@@ -37,6 +37,93 @@ impl Drop for CursorHandle {
 /// Depending on the context, a cursor's lifetime may be scoped to a
 /// transaction or to the whole environment. Its lifetime is also naturally
 /// bound to the lifetime of the database it cursors into.
+///
+/// ## Creation and Ownership
+///
+/// Cursors are normally created by calling `.cursor()` on the transaction that
+/// is to own them. Since a `Cursor` is associated with a `Database`, this also
+/// involves passing a reference or other handle to that `Database` to the
+/// call.
+///
+/// For the `Database`, all three ownership models are permitted, though owned
+/// likely is not useful. The transaction can be used with borrowed or shared
+/// ownership, but note that shared ownership requires having the
+/// `CreateCursor` trait imported.
+///
+/// ### Example — Traditional "keep everything on the stack" style
+///
+/// This is the simplest way to use `Cursor`, but not always the easiest. Most
+/// examples in the documentation use this method. Here, the `Cursor` holds
+/// references to the transaction and the database. This makes it somewhat
+/// inflexible; for example, you cannot make a structure which owns both the
+/// transaction and some set of cursors.
+///
+/// ```
+/// # include!("src/example_helpers.rs");
+/// # fn main() {
+/// # let env = create_env();
+/// # let db = defdb(&env);
+/// # let txn = lmdb::WriteTransaction::new(&env).unwrap();
+/// # run(&txn, &mut txn.access(), &db);
+/// # }
+/// // N.B. Unneeded type and lifetime annotations here for clarity.
+/// fn run<'db, 'txn>(txn: &'txn lmdb::WriteTransaction,
+///                   access: &'txn mut lmdb::WriteAccessor,
+///                   db: &'db lmdb::Database) {
+///   let mut cursor: lmdb::Cursor<'txn, 'db> = txn.cursor(db).unwrap();
+///   // Do stuff with cursor.
+/// # ::std::mem::drop(cursor);
+/// }
+/// ```
+///
+/// ### Example — Use reference counting for more flexibility
+///
+/// ```
+/// # include!("src/example_helpers.rs");
+/// use std::sync::Arc;
+///
+/// // We need to import the `CreateCursor` trait to be able to use shared
+/// // mode cursors. `TxExt` also gets us `to_const()` used below.
+/// use lmdb::traits::{CreateCursor, TxExt};
+///
+/// // This approach lets us make this `Context` struct wherein we can pass
+/// // around everything our functions might need in one piece as well as
+/// // having more flexible transaction lifetimes.
+/// struct Context {
+///   txn: Arc<lmdb::ConstTransaction<'static>>,
+///   cursor: Arc<lmdb::Cursor<'static,'static>>,
+/// }
+///
+/// // N.B. Unneeded type and lifetime annotations here for clarity.
+///
+/// # fn main() {
+/// // Everything at higher levels also needs to have `'static` lifetimes.
+/// // Here, we just stuff everything into `Arc`s for simplicity.
+/// let env: Arc<lmdb::Environment> = Arc::new(create_env());
+/// let db: Arc<lmdb::Database<'static>> = Arc::new(lmdb::Database::open(
+///   env.clone(), None, &lmdb::DatabaseOptions::defaults()).unwrap());
+///
+/// // Now we can make our transaction and cursor and pass them around as one.
+/// // Note that you can also use plain `Rc` at this level, too.
+/// let txn: Arc<lmdb::WriteTransaction<'static>> =
+///   Arc::new(lmdb::WriteTransaction::new(env.clone()).unwrap());
+/// let cursor: Arc<lmdb::Cursor<'static, 'static>> = Arc::new(
+///   txn.cursor(db.clone()).unwrap());
+/// let context = Context { txn: txn.clone().to_const(), cursor: cursor };
+/// do_stuff(&context);
+///
+/// // Drop the context so we can get the `WriteTransaction` back
+/// // and commit it.
+/// drop(context);
+/// let txn = Arc::try_unwrap(txn).unwrap();
+/// txn.commit().unwrap();
+/// # }
+///
+/// #[allow(unused_vars)]
+/// fn do_stuff(context: &Context) {
+///   // do stuff
+/// }
+/// ```
 ///
 /// ## Lifetime
 ///
@@ -177,6 +264,28 @@ macro_rules! cursor_get_0_v {
 }
 
 impl<'txn,'db> Cursor<'txn,'db> {
+    /// Directly construct a cursor with the given transaction and database
+    /// handles.
+    ///
+    /// This is a low-level function intended only for use by implementations
+    /// of the `CreateCursor` trait.
+    pub fn construct(
+        txn: NonSyncSupercow<'txn, ConstTransaction<'txn>>,
+        db: Supercow<'db, Database<'db>>)
+        -> Result<Self>
+    {
+        try!(tx::assert_same_env(&txn, &db));
+
+        let mut raw: *mut ffi::MDB_cursor = ptr::null_mut();
+        unsafe {
+            lmdb_call!(ffi::mdb_cursor_open(tx::txptr(&txn), db.dbi(),
+                                            &mut raw));
+        }
+
+        Ok(unsafe { create_cursor(raw, txn,
+                                  Supercow::phantom(db)) })
+    }
+
     #[inline]
     fn get_0_kv<'access, K : FromLmdbBytes + ?Sized,
                 V : FromLmdbBytes + ?Sized>

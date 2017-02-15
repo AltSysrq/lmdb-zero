@@ -331,6 +331,7 @@ pub struct ConstTransaction<'env> {
 ///
 /// All notes for `ConstTransaction` apply.
 #[derive(Debug)]
+// This MUST be a newtype struct and MUST NOT `impl Drop`
 pub struct ReadTransaction<'env>(ConstTransaction<'env>);
 /// A read-write LMDB transaction.
 ///
@@ -341,6 +342,7 @@ pub struct ReadTransaction<'env>(ConstTransaction<'env>);
 ///
 /// All notes for `ConstTransaction` apply.
 #[derive(Debug)]
+// This MUST be a newtype struct and MUST NOT `impl Drop`
 pub struct WriteTransaction<'env>(ConstTransaction<'env>);
 
 /// A read-only LMDB transaction that has been reset.
@@ -488,20 +490,19 @@ impl<'env> ConstTransaction<'env> {
 
     /// Creates a new cursor scoped to this transaction, bound to the given
     /// database.
+    ///
+    /// This method is functionally equivalent to the method on `CreateCursor`
+    /// and exists for convenience and backwards-compatibility.
+    ///
+    /// If you have an, e.g., `Rc<ReadTransaction>` and want to get a
+    /// `Cursor<'static,'db>`, make sure you have the `CreateCursor` trait
+    /// imported so that the needed alternate implementations of this method
+    /// are available.
     #[inline]
     pub fn cursor<'txn, 'db, DB>(&'txn self, db: DB)
                                  -> Result<Cursor<'txn,'db>>
     where DB : Into<Supercow<'db, Database<'db>>> {
-        let db = db.into();
-        try!(db.assert_same_env(&self.env));
-
-        let mut raw: *mut ffi::MDB_cursor = ptr::null_mut();
-        unsafe {
-            lmdb_call!(ffi::mdb_cursor_open(self.tx.0, db.dbi(), &mut raw));
-        }
-
-        Ok(unsafe { cursor::create_cursor(raw, Supercow::borrowed(self),
-                                          Supercow::phantom(db)) })
+        Cursor::construct(Supercow::borrowed(self), db.into())
     }
 
     /// Returns the internal id of this transaction.
@@ -551,6 +552,15 @@ impl<'env> ConstTransaction<'env> {
 pub fn assert_sensible_cursor(access: &ConstAccessor, cursor: &Cursor)
                               -> Result<()> {
     access.0.assert_sensible_cursor(cursor)
+}
+#[inline]
+pub fn assert_same_env(txn: &ConstTransaction, db: &Database)
+                       -> Result<()> {
+    db.assert_same_env(&txn.env)
+}
+#[inline]
+pub fn txptr(txn: &ConstTransaction) -> *mut ffi::MDB_txn {
+    txn.tx.0
 }
 
 impl<'env> Deref for ReadTransaction<'env> {
