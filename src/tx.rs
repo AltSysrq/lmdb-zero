@@ -392,6 +392,15 @@ pub struct ResetTransaction<'env>(ReadTransaction<'env>);
 /// parameter, eg `&'x lmdb::ConstAccessor<'x>`.
 #[derive(Debug)]
 pub struct ConstAccessor<'txn>(&'txn ConstTransaction<'txn>);
+
+/// ConstAccessor implements Drop trait so that if it gets
+/// dropped, a new accessor can be safely obtained
+impl<'txn> Drop for ConstAccessor<'txn> {
+    fn drop(&mut self) {
+        self.0.has_yielded_accessor.set(false)
+    }
+}
+
 /// A read-write data accessor obtained from a `WriteTransaction`.
 ///
 /// All operations that can be performed on `ConstAccessor` can also be
