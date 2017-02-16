@@ -300,7 +300,8 @@ impl<'a> Drop for DbHandle<'a> {
 ///
 /// ## Lifetime
 ///
-/// A `Database` must be strictly outlived by its `Environment`.
+/// A `Database` in borrowed mode must be strictly outlived by its
+/// `Environment`.
 ///
 /// `'a` is covariant: given two lifetimes `'x` and `'y` where `'x: 'y`, a
 /// `&Database<'x>` will implicitly coerce to `&Database<'y>`.
@@ -319,6 +320,95 @@ impl<'a> Drop for DbHandle<'a> {
 /// Because of this property, if you need to hold onto an `&lmdb::Database` and
 /// must explicitly name both lifetimes, it is usually best to use the same
 /// lifetime for both the reference and the parameter, eg `&'x lmdb::Database<'x>`.
+///
+/// ## Ownership Modes
+///
+/// All three ownership modes are fully supported. Most examples use borrowed
+/// mode, which is used by simply passing an `&'env Environment` to `open`.
+///
+/// ### Owned Mode
+///
+/// Owned mode is useful when your application only uses one `Database`; this
+/// alleviates the need to track both the `Environment` and the `Database`.
+///
+/// ```
+/// # include!("src/example_helpers.rs");
+/// fn setup() -> lmdb::Database<'static> {
+///   // N.B. Unneeded type and lifetime annotations included for clarity.
+///   let env: lmdb::Environment = create_env();
+///   // Move `env` into the new `Database` because we only want to use the
+///   // default database. Since it owns the `Environment`, its lifetime
+///   // parameter is simply `'static`.
+///   let db: lmdb::Database<'static> = lmdb::Database::open(
+///     env, None, &lmdb::DatabaseOptions::defaults()).unwrap();
+///   // And since it owns the `Environment`, we can even return it without
+///   // worrying about `env`.
+///   db
+/// }
+///
+/// # fn main() {
+/// let db = setup();
+/// // Do stuff with `db`...
+///
+/// // When `db` is dropped, so is the inner `Environment`.
+/// # }
+/// ```
+///
+/// ### Shared Mode
+///
+/// Shared mode allows to have the `Database` hold on to the `Environment` via
+/// an `Arc` instead of a bare reference. This has all the benefits of owned
+/// mode and none of the drawbacks, but makes it harder to determine when
+/// exactly the `Environment` gets dropped since this only happens after all
+/// referents are (dynamically) dropped.
+///
+/// Without resorting to `unsafe`, shared mode is also the only way to define a
+/// structure which holds both the `Environment` itself and its child
+/// `Database` values.
+///
+/// ```
+/// # #![allow(dead_code)]
+/// # include!("src/example_helpers.rs");
+/// use std::sync::Arc;
+///
+/// struct ApplicationContext {
+///   env: Arc<lmdb::Environment>,
+///   // You could of course also put these under `Arc`s as well, for example
+///   // if using shared mode with transactions and/or cursors.
+///   dict: lmdb::Database<'static>,
+///   freq: lmdb::Database<'static>,
+/// }
+///
+/// impl ApplicationContext {
+///   fn into_env(self) -> Arc<lmdb::Environment> { self.env }
+/// }
+///
+/// # fn main() {
+/// let env = Arc::new(create_env());
+/// let dict = lmdb::Database::open(
+///   env.clone(), Some("dict"),
+///   &lmdb::DatabaseOptions::create_map::<str>()).unwrap();
+/// let freq = lmdb::Database::open(
+///   env.clone(), Some("freq"),
+///   &lmdb::DatabaseOptions::create_map::<str>()).unwrap();
+///
+/// let context = ApplicationContext {
+///   env: env,
+///   dict: dict,
+///   freq: freq,
+/// };
+///
+/// // Pass `context` around the application freely...
+///
+/// // We could just let `ApplicationContext` drop, but if we want to be
+/// // absolutely sure we know when the `Environment` drops (by panicking if
+/// // it doesn't do so when we want), we can disassemble the struct and check
+/// // manually.
+/// let env = context.into_env(); // Databases get dropped
+/// Arc::try_unwrap(env).unwrap(); // Regain ownership of `Environment`,
+///                                // then drop it.
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct Database<'a> {
     db: DbHandle<'a>,
