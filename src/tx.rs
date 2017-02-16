@@ -770,7 +770,6 @@ impl<'env> ResetTransaction<'env> {
     /// reading.
     pub fn renew(self) -> Result<ReadTransaction<'env>> {
         unsafe { lmdb_call!(ffi::mdb_txn_renew((self.0).0.tx.0)); }
-        self.0.has_yielded_accessor.set(false);
         Ok(self.0)
     }
 }
@@ -880,10 +879,6 @@ impl<'env> WriteTransaction<'env> {
     /// ```
     pub fn child_tx<'a>(&'a mut self) -> Result<WriteTransaction<'a>>
     where 'env: 'a {
-        // Allow the caller to later retrieve a new accessor, since the borrow
-        // rules ensure that they've destroyed the old one.
-        self.has_yielded_accessor.set(false);
-
         let env = Supercow::share(&mut self.0.env);
         Ok(WriteTransaction(try!(ConstTransaction::new(
             env, Some(&mut*self), 0))))
