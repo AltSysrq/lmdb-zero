@@ -1,4 +1,5 @@
 // Copyright 2016 FullContact, Inc
+// Copyright 2017 Jason Lingle
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -41,7 +42,8 @@
 //!     // Write some data in a transaction
 //!     let txn = lmdb::WriteTransaction::new(&env).unwrap();
 //!     // An accessor is used to control memory access.
-//!     // NB You can only get the accessor from the transaction once.
+//!     // NB You can only have one live accessor from a particular transaction
+//!     // at a time. Violating this results in a panic at runtime.
 //!     {
 //!       let mut access = txn.access();
 //!       access.put(&db, "Germany", "Berlin", lmdb::put::Flags::empty()).unwrap();

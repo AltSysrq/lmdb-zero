@@ -362,11 +362,11 @@ pub struct ResetTransaction<'env>(ReadTransaction<'env>);
 ///
 /// ## Lifetime
 ///
-/// A `ConstAccessor` must be outlived by its parent transaction (not
-/// necessarily strictly). The parent transaction cannot be destroyed
-/// (committed, etc) until the borrow from the accessor ends. This in many
-/// cases requires adding an extra scope (with bare `{ }` braces) in which to
-/// obtain the accessor, as can be seen in many of the examples.
+/// A `ConstAccessor` must be strictly outlived by its parent transaction. The
+/// parent transaction cannot be destroyed (committed, etc) until the borrow
+/// from the accessor ends. This in many cases requires adding an extra scope
+/// (with bare `{ }` braces) in which to obtain the accessor, as can be seen in
+/// many of the examples.
 ///
 /// The lifitem of a reference to a `ConstAccessor` dictates the lifetime of
 /// the data accessed via the accessor.
@@ -468,9 +468,18 @@ impl<'env> ConstTransaction<'env> {
 
     /// Returns an accessor used to manipulate data in this transaction.
     ///
+    /// ## Ownership
+    ///
+    /// Unlike most other lmdb-zero APIs, accessors do not support shared
+    /// ownership modes (e.g., where the accessor would hold on to a
+    /// `Rc<ConstTransaction>`). If you need dynamically-managed lifetime,
+    /// instead simply drop the accessor and get a new one the next time one is
+    /// needed.
+    ///
     /// ## Panics
     ///
-    /// Panics if this function has already been called on this transaction.
+    /// Panics if this function has already been called on this transaction and
+    /// the returned value has not yet been dropped.
     ///
     /// ## Example
     ///
@@ -483,9 +492,9 @@ impl<'env> ConstTransaction<'env> {
     /// // Get access the first time
     /// let access = txn.access();
     ///
-    /// // You can't get the accessor again, since this would create two
-    /// // references to the same logical memory and allow creating aliased
-    /// // mutable references and so forth.
+    /// // You can't get the accessor again in the same scope, since this
+    /// // would create two references to the same logical memory and allow
+    /// // creating aliased mutable references and so forth.
     /// let access2 = txn.access(); // PANIC!
     /// # }
     /// ```
@@ -895,7 +904,8 @@ impl<'env> WriteTransaction<'env> {
     ///
     /// ## Panics
     ///
-    /// Panics if called more than once on the same transaction.
+    /// Panics if an accessor has already been obtained from this transaction
+    /// and not yet dropped.
     #[inline]
     pub fn access(&self) -> WriteAccessor {
         WriteAccessor(self.0.access())
