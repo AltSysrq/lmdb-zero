@@ -119,7 +119,7 @@
 //! If you want to define your own types to store in the database, see the
 //! `lmdb_zero::traits` submodule.
 //!
-//! # Lifetimes
+//! # Lifetimes and Ownership
 //!
 //! Lmdb-zero heavily uses lifetime parameters to allow user code to safely
 //! retain handles into LMDB without extra runtime overhead.
@@ -129,6 +129,45 @@
 //! as struct members. The documentation for each type with lifetime parameters
 //! therefore includes a short discussion of how the lifetimes are intended to
 //! interact and how best to work with them.
+//!
+//! It is also possible to opt-out of compile-time lifetime tracking and
+//! instead use `Arc` or `Rc` around various handles. In this case, all the
+//! lifetime parameters simply become `'static`. See the next section for
+//! details.
+//!
+//! ## Ownership Modes
+//!
+//! As of version 0.4.0, most APIs which construct a value which holds on to
+//! some "parent" value (e.g., creating a `Database` within an `Environment`)
+//! accept anything that can be converted into a [`Supercow`](https://docs.rs/supercow/0.1.0/supercow/).
+//! Deep understanding of `Supercow` itself is not required to use `lmdb-zero`.
+//! The only thing you need to know is that an `Into<Supercow<T>>` means that
+//! you can pass in one of three classes of arguments:
+//!
+//! - `&T`. This is "borrowed mode". The majority of the documentation in this
+//! crate uses borrowed mode. This is zero-overhead and is statically
+//! verifiable (i.e., all usage is checked at compile-time), so it is
+//! recommended that borrowed mode be used whenever reasonably possible. This
+//! mode causes the "child" value to hold a normal reference to the parent,
+//! which means that lifetimes must be tracked in the lifetime parameters. But
+//! because of this, this mode can be inflexible; for example, you cannot use
+//! safe Rust to create a `struct` holding both an `Environment` and its
+//! `Database`s using borrowed mode.
+//!
+//! - `Arc<T>`. This is "shared mode". For `NonSyncSupercow`, `Rc<T>` may also
+//! be used. The child will hold the `Arc` or `Rc`, thus ensuring the parent
+//! lives at least as long as the child. Because of this, the related lifetime
+//! parameters can simply be written as `'static`. It also means that
+//! `Arc`/`Rc` references to the child and parent can be placed together in the
+//! same struct with safe Rust. This comes at a cost: Constructing values in
+//! shared mode incurs allocation; additionally, the ability to statically
+//! verify the lifetime of the parent values is lost.
+//!
+//! - `T`. This is "owned mode". The parent is moved into the child value and
+//! owned by the child from thereon. This is most useful when you only ever
+//! want one child and don't care about retaining ownership of the parent. As
+//! with shared mode, it also allows simply using `'static` as the relevant
+//! lifetime parameters.
 //!
 //! # Major Differences from the LMDB C API
 //!
@@ -166,6 +205,10 @@
 //!   values are slightly larger and some function calls have an extra (very
 //!   predictable) branch if the optimiser does not optimise the branch away
 //!   entirely.
+//!
+//! - Using ownership modes other than borrowed (i.e., mundane references)
+//!   incurs extra allocations in addition to the overhead of inherent in that
+//!   ownership mode.
 //!
 //! # Using Zero-Copy
 //!
