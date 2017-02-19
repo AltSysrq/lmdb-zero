@@ -95,32 +95,6 @@ pub mod db {
             /// txn.commit().unwrap();
             /// # }
             /// ```
-            ///
-            /// ## Segmentation Faults
-            ///
-            /// Users on AMD64 with most GCC versions may encounter
-            /// segmentation faults when using this option in a release build
-            /// due to a bug in which the LMDB code that handles this option is
-            /// improperly vectorised. If you run into this issue, you can work
-            /// around it in a couple ways:
-            ///
-            /// - Use a different C compiler. This is the best option, as the
-            /// problem does not occur with Clang. For example, if you have
-            /// Clang 3.7 installed as `clang-3.7`, you can use it for
-            /// compiling C code by running, eg, `CC=clang-3.7 cargo build
-            /// --release`. Note that you need to first `cargo clean` for this
-            /// to take effect everywhere. If you are writing a library, keep
-            /// in mind that this means pushing this requirement up to your
-            /// client applications as well.
-            ///
-            /// - Adjust the build process to compile C code with `-O2` instead
-            /// of `-O3`.
-            ///
-            /// - Rework your code to not need this option.
-            ///
-            /// - If all your keys and data values have sizes which are a
-            /// multiple of 16, the problem may be masked. (This workaround has
-            /// not been tested.)
             const DUPSORT = ffi::MDB_DUPSORT,
             /// Keys are binary integers in native byte order, either
             /// `libc::c_uint` or `libc::size_t`, and will be sorted as such.
