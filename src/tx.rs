@@ -292,6 +292,11 @@ impl TxHandle {
 /// underlying database, but rather exclusivity for enforcement of child
 /// transaction semantics.
 ///
+/// ## Ownership
+///
+/// Transactions support all three ownership modes (but owned mode is not
+/// useful). See `ReadTransaction` and `WriteTransaction` for details.
+///
 /// ## Lifetime
 ///
 /// A `ConstTransaction` must be strictly outlived by its `Environment`.
@@ -327,6 +332,31 @@ pub struct ConstTransaction<'env> {
 /// `ReadTransaction` can additionally operate on cursors with a lifetime
 /// scoped to the environment instead of the transaction.
 ///
+/// ## Ownership
+///
+/// `ReadTransaction`s can be created with all three ownership modes (but owned
+/// mode is not useful).
+///
+/// ### Example — Shared mode
+///
+/// ```
+/// # include!("src/example_helpers.rs");
+/// use std::sync::Arc;
+///
+/// # fn main() {
+/// let env = Arc::new(create_env());
+/// let db = Arc::new(lmdb::Database::open(
+///   env.clone(), None, &lmdb::DatabaseOptions::defaults()).unwrap());
+///
+/// // Type and lifetime annotated explicitly for clarity
+/// let txn: lmdb::ReadTransaction<'static> = lmdb::ReadTransaction::new(
+///   env.clone()).unwrap();
+///
+/// // Do stuff with `txn`...
+/// # drop(txn); drop(db);
+/// # }
+/// ```
+///
 /// ## Lifetime
 ///
 /// All notes for `ConstTransaction` apply.
@@ -337,6 +367,33 @@ pub struct ReadTransaction<'env>(ConstTransaction<'env>);
 ///
 /// In addition to all operations valid on `ConstTransaction`, it is also
 /// possible to perform writes to the underlying databases.
+///
+///
+/// ## Ownership
+///
+/// `WriteTransaction`s can be created with all three ownership modes (but
+/// owned mode is not useful).
+///
+/// ### Example — Shared mode
+///
+/// ```
+/// # include!("src/example_helpers.rs");
+/// use std::sync::Arc;
+///
+/// # fn main() {
+/// let env = Arc::new(create_env());
+/// let db = Arc::new(lmdb::Database::open(
+///   env.clone(), None, &lmdb::DatabaseOptions::defaults()).unwrap());
+///
+/// // Type and lifetime annotated explicitly for clarity
+/// let txn: lmdb::WriteTransaction<'static> = lmdb::WriteTransaction::new(
+///   env.clone()).unwrap();
+///
+/// // Do stuff with `txn`...
+///
+/// txn.commit().unwrap();
+/// # }
+/// ```
 ///
 /// ## Lifetime
 ///
