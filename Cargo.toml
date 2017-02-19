@@ -7,6 +7,7 @@ readme = "README.md"
 repository = "https://github.com/AltSysrq/lmdb-zero"
 documentation = "https://docs.rs/lmdb-zero"
 keywords = ["lmdb", "zero-copy", "btree"]
+categories = ["database"]
 
 description = """
 An almost-safe, near-zero-cost, feature-complete, unabashedly non-abstract
