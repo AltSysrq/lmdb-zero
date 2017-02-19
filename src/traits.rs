@@ -259,10 +259,11 @@ pub trait FromReservedLmdbBytes {
 /// Implementing this trait provides blanket implementations of
 /// `AsLmdbBytes`, `FromLmdbBytes`, and `FromReservedLmdbBytes`.
 ///
-/// All integer and floating-point types have this trait, as well as
-/// fixed-width arrays of up to 32 `LmdbRaw` types, and the empty tuple.
-/// (One cannot use `LmdbRaw` with tuples in general, as the physical
-/// layout of tuples is not currently defined.)
+/// See also [`LmdbRawIfUnaligned`](trait.LmdbRawIfUnaligned.html) for types
+/// that become `LmdbRaw` when wrapped with
+/// [`Unaligned`](../struct.Unaligned.html). In particular, all integer and
+/// floating-point types are `LmdbRawIfUnaligned`, except for `u8` and `i8`
+/// which are also `LmdbRaw`.
 ///
 /// ## Alignment
 ///
@@ -382,8 +383,10 @@ pub unsafe trait LmdbRaw : Copy + Sized {
 /// client code to wrap the type in `Unaligned` to explicitly handle possible
 /// misalignment.
 ///
+/// All integer and floating-point types have this trait.
+///
 /// Note that `LmdbRawIfUnaligned` is not blanket-implemented for fixed-size
-/// arrays, because currently doing so would preclude a blanke implementation
+/// arrays, because currently doing so would preclude a blanket implementation
 /// of `LmdbRaw` for fixed-size arrays. Since the latter is generally more
 /// useful and is more consistent since variable-length slices can only
 /// usefully interact with `LmdbRaw`, that approach was chosen.
