@@ -4,20 +4,11 @@ lmdb-zero is a near-zero-cost wrapper around [LMDB](http://lmdb.tech/) designed
 to allow using the full range of features offered by LMDB while keeping it
 reasonably easy to write safe programs.
 
-[Documentation](https://docs.rs/lmdb-zero)
-
-## Why _another_ LMDB library?
-
-_There already exist the competing `lmdb` and `lmdb-rs` crates right now. Why
-write a third?_
-
-The main issue with the existing crates is that they try to abstract some
-properties of LMDB away, and as a result are not able to expose some of LMDB's
-functionality, and in some cases compromise safety.
-
-`lmdb-zero` is instead as much as possible a 1:1 mapping of the raw API, mainly
+`lmdb-zero` is as much as possible a 1:1 mapping of the raw API, mainly
 providing RAII constructs and integration into Rust's borrow checker to ensure
 safety.
+
+[Documentation](https://docs.rs/lmdb-zero)
 
 ## Features
 
@@ -37,16 +28,22 @@ safety.
 
 ## Status
 
-The API is complete but not necessarily completely stable; there may yet be
-unsound parts of the API or the implementations.
+The API is complete and reasonably stable and is believed to be sound insofar
+as Rust's unsafety rules are actually defined.
 
-This crate has not been tested on architectures with strong alignment
-constraints. While the conversion API checks for correct alignment by default,
-issues such as [#27060](https://github.com/rust-lang/rust/issues/27060) could
-come up, and it is of course possible there are bugs in handling alignment
-here.
+This crate has not been thoroughly tested on architectures with strong
+alignment constraints, though the tests pass on ARM7. While the conversion API
+checks for correct alignment by default, issues such as
+[#27060](https://github.com/rust-lang/rust/issues/27060) could come up, and it
+is of course possible there are bugs in handling alignment here.
 
 ## Changelog
+
+**0.4.0**: Minor breaking changes. `ConstAccessor` and `WriteAccessor` can now
+  be dropped and re-obtained. Most types now support additional
+  ownership/borrowing modes, which allows for dynamic lifetime management and
+  other possibilities. Upgrade to `liblmdb-sys` 0.2.2 and `bitflags` 0.8.0.
+  Fixes to documentation.
 
 **0.3.1**: Metadata updates to reflect change of crate ownership. No software
   changes were made in this version.
@@ -65,6 +62,23 @@ here.
 **0.2.0**: Switch from `lmdb-sys` to newer `liblmdb-sys`.
 
 **0.1.0**: Initial release.
+
+### Breaking Changes in 0.4.0
+
+A number of functions which formerly took an `&SomeType` parameter now take an
+`Into<Supercow<SomeType>>`. For the vast majority of existing code, this has no
+effect, but it could cause issues if older code was relying on an implicit
+`Deref` call (for example, via `lazy_static!`) to produce the correct reference
+type. If this causes issues, explicitly writing the dereferencing is required.
+For example, if your code originally had `lmdb::Database::open(&ENV, ...)` where
+`ENV` was declared via `lazy_static!`, it would need to be changed to
+`lmdb::Database::open(&*ENV, ...)`.
+
+`ConstAccessor` and `WriteAccessor` must now be _strictly_ outlived by their
+transactions. No practical cases where this would be an issue are apparent, but
+if it comes up, code must be rearranged to ensure the accessor is dropped
+before the transaction. Note that now one can drop the accessor and later
+re-obtain it.
 
 ### Breaking Changes in 0.3.0
 

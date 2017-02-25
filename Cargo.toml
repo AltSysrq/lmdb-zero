@@ -1,12 +1,13 @@
 [package]
 name = "lmdb-zero"
-version = "0.3.1"
+version = "0.4.0"
 authors = ["FullContact, Inc", "Jason Lingle"]
 license = "MIT/Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/AltSysrq/lmdb-zero"
 documentation = "https://docs.rs/lmdb-zero"
 keywords = ["lmdb", "zero-copy", "btree"]
+categories = ["database"]
 
 description = """
 An almost-safe, near-zero-cost, feature-complete, unabashedly non-abstract
@@ -14,9 +15,10 @@ wrapper around LMDB.
 """
 
 [dependencies]
-liblmdb-sys = "0.2.1"
-bitflags = "0.7.0"
+liblmdb-sys = "0.2.2"
+bitflags = "0.8.0"
 libc = "0.2.14"
+supercow = "0.1.0"
 
 [dev-dependencies]
 tempdir = "0.3.4"

@@ -1,4 +1,5 @@
 // Copyright 2016 FullContact, Inc
+// Copyright 2017 Jason Lingle
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -6,18 +7,19 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use libc::{self, c_void};
 
 use ffi;
+use supercow::{NonSyncSupercow, Supercow, Phantomcow};
 
 use env::Environment;
 use error::Result;
 use mdb_vals::*;
 use traits::*;
-use tx::{put, del, ConstAccessor, ConstTransaction, WriteAccessor};
+use dbi::Database;
+use tx::{self, put, del, ConstAccessor, ConstTransaction, WriteAccessor};
 use tx::assert_sensible_cursor;
 
 #[derive(Debug)]
@@ -35,6 +37,93 @@ impl Drop for CursorHandle {
 /// Depending on the context, a cursor's lifetime may be scoped to a
 /// transaction or to the whole environment. Its lifetime is also naturally
 /// bound to the lifetime of the database it cursors into.
+///
+/// ## Creation and Ownership
+///
+/// Cursors are normally created by calling `.cursor()` on the transaction that
+/// is to own them. Since a `Cursor` is associated with a `Database`, this also
+/// involves passing a reference or other handle to that `Database` to the
+/// call.
+///
+/// For the `Database`, all three ownership models are permitted, though owned
+/// likely is not useful. The transaction can be used with borrowed or shared
+/// ownership, but note that shared ownership requires having the
+/// `CreateCursor` trait imported.
+///
+/// ### Example — Traditional "keep everything on the stack" style
+///
+/// This is the simplest way to use `Cursor`, but not always the easiest. Most
+/// examples in the documentation use this method. Here, the `Cursor` holds
+/// references to the transaction and the database. This makes it somewhat
+/// inflexible; for example, you cannot make a structure which owns both the
+/// transaction and some set of cursors.
+///
+/// ```
+/// # include!("src/example_helpers.rs");
+/// # fn main() {
+/// # let env = create_env();
+/// # let db = defdb(&env);
+/// # let txn = lmdb::WriteTransaction::new(&env).unwrap();
+/// # run(&txn, &mut txn.access(), &db);
+/// # }
+/// // N.B. Unneeded type and lifetime annotations here for clarity.
+/// fn run<'db, 'txn>(txn: &'txn lmdb::WriteTransaction,
+///                   access: &'txn mut lmdb::WriteAccessor,
+///                   db: &'db lmdb::Database) {
+///   let mut cursor: lmdb::Cursor<'txn, 'db> = txn.cursor(db).unwrap();
+///   // Do stuff with cursor.
+/// # ::std::mem::drop(cursor);
+/// }
+/// ```
+///
+/// ### Example — Use reference counting for more flexibility
+///
+/// ```
+/// # include!("src/example_helpers.rs");
+/// use std::sync::Arc;
+///
+/// // We need to import the `CreateCursor` trait to be able to use shared
+/// // mode cursors. `TxExt` also gets us `to_const()` used below.
+/// use lmdb::traits::{CreateCursor, TxExt};
+///
+/// // This approach lets us make this `Context` struct wherein we can pass
+/// // around everything our functions might need in one piece as well as
+/// // having more flexible transaction lifetimes.
+/// struct Context {
+///   txn: Arc<lmdb::ConstTransaction<'static>>,
+///   cursor: Arc<lmdb::Cursor<'static,'static>>,
+/// }
+///
+/// // N.B. Unneeded type and lifetime annotations here for clarity.
+///
+/// # fn main() {
+/// // Everything at higher levels also needs to have `'static` lifetimes.
+/// // Here, we just stuff everything into `Arc`s for simplicity.
+/// let env: Arc<lmdb::Environment> = Arc::new(create_env());
+/// let db: Arc<lmdb::Database<'static>> = Arc::new(lmdb::Database::open(
+///   env.clone(), None, &lmdb::DatabaseOptions::defaults()).unwrap());
+///
+/// // Now we can make our transaction and cursor and pass them around as one.
+/// // Note that you can also use plain `Rc` at this level, too.
+/// let txn: Arc<lmdb::WriteTransaction<'static>> =
+///   Arc::new(lmdb::WriteTransaction::new(env.clone()).unwrap());
+/// let cursor: Arc<lmdb::Cursor<'static, 'static>> = Arc::new(
+///   txn.cursor(db.clone()).unwrap());
+/// let context = Context { txn: txn.clone().to_const(), cursor: cursor };
+/// do_stuff(&context);
+///
+/// // Drop the context so we can get the `WriteTransaction` back
+/// // and commit it.
+/// drop(context);
+/// let txn = Arc::try_unwrap(txn).unwrap();
+/// txn.commit().unwrap();
+/// # }
+///
+/// #[allow(unused_vars)]
+/// fn do_stuff(context: &Context) {
+///   // do stuff
+/// }
+/// ```
 ///
 /// ## Lifetime
 ///
@@ -57,6 +146,7 @@ impl Drop for CursorHandle {
 /// }
 /// fn covariance<'a, 'txn: 'a, 'db: 'a>(c: lmdb::Cursor<'txn,'db>)
 ///                                     -> CursorOwner<'a> {
+///   let c: lmdb::Cursor<'a, 'a> = c;
 ///   CursorOwner { cursor: c }
 /// }
 /// ```
@@ -85,23 +175,26 @@ impl Drop for CursorHandle {
 #[derive(Debug)]
 pub struct Cursor<'txn,'db> {
     cursor: CursorHandle,
-    txn: &'txn ConstTransaction<'txn>,
-    _db: PhantomData<&'db ()>,
+    txn: NonSyncSupercow<'txn, ConstTransaction<'txn>>,
+    _db: Phantomcow<'db, Database<'db>>,
 }
 
 // Used by transactions to construct/query cursors
-pub unsafe fn create_cursor<'txn, 'db>(raw: *mut ffi::MDB_cursor,
-                                       txn: &'txn ConstTransaction<'txn>)
-                                       -> Cursor<'txn, 'db> {
+pub unsafe fn create_cursor<'txn, 'db>(
+    raw: *mut ffi::MDB_cursor,
+    txn: NonSyncSupercow<'txn, ConstTransaction<'txn>>,
+    db: Phantomcow<'db, Database<'db>>)
+    -> Cursor<'txn, 'db>
+{
     Cursor {
         cursor: CursorHandle(raw),
         txn: txn,
-        _db: PhantomData,
+        _db: db,
     }
 }
-pub fn txn_ref<'txn,'db>(cursor: &Cursor<'txn,'db>)
-                         -> &'txn ConstTransaction<'txn> {
-    cursor.txn
+pub fn txn_ref<'a,'txn: 'a,'db>(cursor: &'a Cursor<'txn,'db>)
+                                -> &'a ConstTransaction<'txn> {
+    &*cursor.txn
 }
 
 /// A read-only cursor which has been dissociated from its original
@@ -111,31 +204,23 @@ pub fn txn_ref<'txn,'db>(cursor: &Cursor<'txn,'db>)
 #[derive(Debug)]
 pub struct StaleCursor<'db> {
     cursor: CursorHandle,
-    env: &'db Environment,
-    _db: PhantomData<&'db ()>,
+    env: NonSyncSupercow<'db, Environment>,
+    _db: Phantomcow<'db, Database<'db>>,
 }
 
 // Internal
-pub fn to_stale<'a,'db>(cursor: Cursor<'a,'db>, env: &'db Environment)
+pub fn to_stale<'a,'db>(cursor: Cursor<'a,'db>,
+                        env: NonSyncSupercow<'db, Environment>)
                         -> StaleCursor<'db> {
     StaleCursor {
         cursor: cursor.cursor,
         env: env,
-        _db: PhantomData,
-    }
-}
-pub fn from_stale<'txn,'db>(stale: StaleCursor<'db>,
-                            txn: &'txn ConstTransaction<'txn>)
-                            -> Cursor<'txn,'db> {
-    Cursor {
-        cursor: stale.cursor,
-        txn: txn,
-        _db: PhantomData,
+        _db: cursor._db,
     }
 }
 pub fn env_ref<'a,'db>(cursor: &'a StaleCursor<'db>)
                        -> &'a Environment {
-    cursor.env
+    &*cursor.env
 }
 pub fn stale_cursor_ptr<'db>(cursor: &StaleCursor<'db>)
                              -> *mut ffi::MDB_cursor {
@@ -170,6 +255,56 @@ macro_rules! cursor_get_0_v {
 }
 
 impl<'txn,'db> Cursor<'txn,'db> {
+    /// Directly construct a cursor with the given transaction and database
+    /// handles.
+    ///
+    /// This is a low-level function intended only for use by implementations
+    /// of the `CreateCursor` trait. (There is nothing less safe about it being
+    /// low-level; it's simply inconvenient.)
+    pub fn construct(
+        txn: NonSyncSupercow<'txn, ConstTransaction<'txn>>,
+        db: Supercow<'db, Database<'db>>)
+        -> Result<Self>
+    {
+        try!(tx::assert_same_env(&txn, &db));
+
+        let mut raw: *mut ffi::MDB_cursor = ptr::null_mut();
+        unsafe {
+            lmdb_call!(ffi::mdb_cursor_open(tx::txptr(&txn), db.dbi(),
+                                            &mut raw));
+        }
+
+        Ok(unsafe { create_cursor(raw, txn,
+                                  Supercow::phantom(db)) })
+    }
+
+    /// Directly renew a `StaleCursor` into a functional `Cursor` using the
+    /// given database handle.
+    ///
+    /// This is a low-level function intended only for use by implementations
+    /// of the `AssocCursor` trait. (There is nothing less safe about it being
+    /// low-level; it's simply inconvenient.)
+    ///
+    /// It is an error if `txn` is not actually a `ReadTransaction`.
+    pub fn from_stale(
+        stale: StaleCursor<'db>,
+        txn: NonSyncSupercow<'txn, ConstTransaction<'txn>>)
+        -> Result<Self>
+    {
+        try!(tx::assert_in_env(&txn, env_ref(&stale)));
+
+        unsafe {
+            lmdb_call!(ffi::mdb_cursor_renew(
+                tx::txptr(&txn), stale_cursor_ptr(&stale)));
+        }
+
+        Ok(Cursor {
+            cursor: stale.cursor,
+            txn: txn,
+            _db: stale._db,
+        })
+    }
+
     #[inline]
     fn get_0_kv<'access, K : FromLmdbBytes + ?Sized,
                 V : FromLmdbBytes + ?Sized>

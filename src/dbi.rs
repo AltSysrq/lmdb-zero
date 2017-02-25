@@ -1,4 +1,5 @@
 // Copyright 2016 FullContact, Inc
+// Copyright 2017 Jason Lingle
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -13,6 +14,7 @@ use std::ptr;
 use libc::c_int;
 
 use ffi;
+use supercow::Supercow;
 
 use env::{self, Environment};
 use error::{Error, Result};
@@ -93,32 +95,6 @@ pub mod db {
             /// txn.commit().unwrap();
             /// # }
             /// ```
-            ///
-            /// ## Segmentation Faults
-            ///
-            /// Users on AMD64 with most GCC versions may encounter
-            /// segmentation faults when using this option in a release build
-            /// due to a bug in which the LMDB code that handles this option is
-            /// improperly vectorised. If you run into this issue, you can work
-            /// around it in a couple ways:
-            ///
-            /// - Use a different C compiler. This is the best option, as the
-            /// problem does not occur with Clang. For example, if you have
-            /// Clang 3.7 installed as `clang-3.7`, you can use it for
-            /// compiling C code by running, eg, `CC=clang-3.7 cargo build
-            /// --release`. Note that you need to first `cargo clean` for this
-            /// to take effect everywhere. If you are writing a library, keep
-            /// in mind that this means pushing this requirement up to your
-            /// client applications as well.
-            ///
-            /// - Adjust the build process to compile C code with `-O2` instead
-            /// of `-O3`.
-            ///
-            /// - Rework your code to not need this option.
-            ///
-            /// - If all your keys and data values have sizes which are a
-            /// multiple of 16, the problem may be masked. (This workaround has
-            /// not been tested.)
             const DUPSORT = ffi::MDB_DUPSORT,
             /// Keys are binary integers in native byte order, either
             /// `libc::c_uint` or `libc::size_t`, and will be sorted as such.
@@ -275,13 +251,13 @@ pub mod db {
 
 #[derive(Debug)]
 struct DbHandle<'a> {
-    env: &'a Environment,
+    env: Supercow<'a, Environment>,
     dbi: ffi::MDB_dbi,
 }
 
 impl<'a> Drop for DbHandle<'a> {
     fn drop(&mut self) {
-        env::dbi_close(self.env, self.dbi);
+        env::dbi_close(&self.env, self.dbi);
     }
 }
 
@@ -298,7 +274,8 @@ impl<'a> Drop for DbHandle<'a> {
 ///
 /// ## Lifetime
 ///
-/// A `Database` must be strictly outlived by its `Environment`.
+/// A `Database` in borrowed mode must be strictly outlived by its
+/// `Environment`.
 ///
 /// `'a` is covariant: given two lifetimes `'x` and `'y` where `'x: 'y`, a
 /// `&Database<'x>` will implicitly coerce to `&Database<'y>`.
@@ -317,6 +294,95 @@ impl<'a> Drop for DbHandle<'a> {
 /// Because of this property, if you need to hold onto an `&lmdb::Database` and
 /// must explicitly name both lifetimes, it is usually best to use the same
 /// lifetime for both the reference and the parameter, eg `&'x lmdb::Database<'x>`.
+///
+/// ## Ownership Modes
+///
+/// All three ownership modes are fully supported. Most examples use borrowed
+/// mode, which is used by simply passing an `&'env Environment` to `open`.
+///
+/// ### Owned Mode
+///
+/// Owned mode is useful when your application only uses one `Database`; this
+/// alleviates the need to track both the `Environment` and the `Database`.
+///
+/// ```
+/// # include!("src/example_helpers.rs");
+/// fn setup() -> lmdb::Database<'static> {
+///   // N.B. Unneeded type and lifetime annotations included for clarity.
+///   let env: lmdb::Environment = create_env();
+///   // Move `env` into the new `Database` because we only want to use the
+///   // default database. Since it owns the `Environment`, its lifetime
+///   // parameter is simply `'static`.
+///   let db: lmdb::Database<'static> = lmdb::Database::open(
+///     env, None, &lmdb::DatabaseOptions::defaults()).unwrap();
+///   // And since it owns the `Environment`, we can even return it without
+///   // worrying about `env`.
+///   db
+/// }
+///
+/// # fn main() {
+/// let db = setup();
+/// // Do stuff with `db`...
+///
+/// // When `db` is dropped, so is the inner `Environment`.
+/// # }
+/// ```
+///
+/// ### Shared Mode
+///
+/// Shared mode allows to have the `Database` hold on to the `Environment` via
+/// an `Arc` instead of a bare reference. This has all the benefits of owned
+/// mode and none of the drawbacks, but makes it harder to determine when
+/// exactly the `Environment` gets dropped since this only happens after all
+/// referents are (dynamically) dropped.
+///
+/// Without resorting to `unsafe`, shared mode is also the only way to define a
+/// structure which holds both the `Environment` itself and its child
+/// `Database` values.
+///
+/// ```
+/// # #![allow(dead_code)]
+/// # include!("src/example_helpers.rs");
+/// use std::sync::Arc;
+///
+/// struct ApplicationContext {
+///   env: Arc<lmdb::Environment>,
+///   // You could of course also put these under `Arc`s as well, for example
+///   // if using shared mode with transactions and/or cursors.
+///   dict: lmdb::Database<'static>,
+///   freq: lmdb::Database<'static>,
+/// }
+///
+/// impl ApplicationContext {
+///   fn into_env(self) -> Arc<lmdb::Environment> { self.env }
+/// }
+///
+/// # fn main() {
+/// let env = Arc::new(create_env());
+/// let dict = lmdb::Database::open(
+///   env.clone(), Some("dict"),
+///   &lmdb::DatabaseOptions::create_map::<str>()).unwrap();
+/// let freq = lmdb::Database::open(
+///   env.clone(), Some("freq"),
+///   &lmdb::DatabaseOptions::create_map::<str>()).unwrap();
+///
+/// let context = ApplicationContext {
+///   env: env,
+///   dict: dict,
+///   freq: freq,
+/// };
+///
+/// // Pass `context` around the application freely...
+///
+/// // We could just let `ApplicationContext` drop, but if we want to be
+/// // absolutely sure we know when the `Environment` drops (by panicking if
+/// // it doesn't do so when we want), we can disassemble the struct and check
+/// // manually.
+/// let env = context.into_env(); // Databases get dropped
+/// Arc::try_unwrap(env).unwrap(); // Regain ownership of `Environment`,
+///                                // then drop it.
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct Database<'a> {
     db: DbHandle<'a>,
@@ -571,9 +637,12 @@ impl<'a> Database<'a> {
     /// }
     /// # }
     /// ```
-    pub fn open(env: &'a Environment, name: Option<&str>,
-                options: &DatabaseOptions)
-                -> Result<Database<'a>> {
+    pub fn open<E>(env: E, name: Option<&str>,
+                   options: &DatabaseOptions)
+                   -> Result<Database<'a>>
+    where E : Into<Supercow<'a, Environment>> {
+        let env: Supercow<'a, Environment> = env.into();
+
         let mut raw: ffi::MDB_dbi = 0;
         let name_cstr = match name {
             None => None,
@@ -582,12 +651,12 @@ impl<'a> Database<'a> {
         let raw = unsafe {
             // Locking the hash set here is also used to serialise calls to
             // `mdb_dbi_open()`, which are not permitted to be concurrent.
-            let mut locked_dbis = env::env_open_dbis(env).lock()
+            let mut locked_dbis = env::env_open_dbis(&env).lock()
                 .expect("open_dbis lock poisoned");
 
             let mut raw_tx: *mut ffi::MDB_txn = ptr::null_mut();
             lmdb_call!(ffi::mdb_txn_begin(
-                env::env_ptr(env), ptr::null_mut(), 0, &mut raw_tx));
+                env::env_ptr(&env), ptr::null_mut(), 0, &mut raw_tx));
             let mut wrapped_tx = TxHandle(raw_tx); // For auto-closing etc
             lmdb_call!(ffi::mdb_dbi_open(
                 raw_tx, name_cstr.as_ref().map_or(ptr::null(), |s| s.as_ptr()),
@@ -654,9 +723,46 @@ impl<'a> Database<'a> {
     /// # }
     /// ```
     pub fn delete(self) -> Result<()> {
-        try!(env::dbi_delete(self.db.env, self.db.dbi));
+        try!(env::dbi_delete(&self.db.env, self.db.dbi));
         mem::forget(self.db);
         Ok(())
+    }
+
+    /// Returns a reference to the `Environment` to which this `Database`
+    /// belongs.
+    ///
+    /// This can be used to elide needing to pass both an `&Environment` and an
+    /// `&Database` around, but is also useful for the use-case wherein the
+    /// `Database` owns the `Environment`.
+    ///
+    /// Because this may borrow an `Environment` owned by this `Database`, the
+    /// lifetime of the returned reference is dependent on self rather than
+    /// being `'env`. (In fact, `'env` is usually `'static` if the
+    /// `Environment` is owned by the `Database`, so returning `&'env Environment`
+    /// is impossible anyway.)
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # #[allow(unused_vars)]
+    /// # fn main() {
+    /// let env: lmdb::Environment = create_env();
+    /// // We only want one `Database`, so don't bother keeping both variables
+    /// // around and instead let the `Database` own the `Environment`.
+    /// let db = lmdb::Database::open(
+    ///   env, None, &lmdb::DatabaseOptions::defaults()).unwrap();
+    ///
+    /// // `env` has been consumed, but we can still do useful things by
+    /// // getting a reference to the inner value.
+    /// let txn = lmdb::ReadTransaction::new(db.env()).unwrap();
+    ///
+    /// // Do stuff with `txn`, etc.
+    /// # }
+    /// ```
+    #[inline]
+    pub fn env(&self) -> &Environment {
+        &*self.db.env
     }
 
     /// Checks that `other_env` is the same as the environment on this
@@ -665,7 +771,7 @@ impl<'a> Database<'a> {
     /// If it matches, returns `Ok(())`; otherwise, returns `Err`.
     pub fn assert_same_env(&self, other_env: &Environment)
                            -> Result<()> {
-        if self.db.env as *const Environment !=
+        if &*self.db.env as *const Environment !=
             other_env as *const Environment
         {
             Err(Error::Mismatch)

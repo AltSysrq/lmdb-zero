@@ -1,4 +1,5 @@
 // Copyright 2016 FullContact, Inc
+// Copyright 2017 Jason Lingle
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -16,12 +17,178 @@ use std::cmp::Ord;
 use std::ffi::CStr;
 use std::mem;
 use std::num::Wrapping;
+use std::rc::Rc;
 use std::slice;
 use std::str;
+use std::sync::Arc;
+
+use supercow::Supercow;
 
 use ::Ignore;
+use cursor::{Cursor, StaleCursor};
+use dbi::Database;
+use tx::{ConstTransaction, ReadTransaction, WriteTransaction};
 
-pub use error::LmdbResultExt;
+pub use error::{self, LmdbResultExt};
+
+/// Extension trait for `Rc` and `Arc` that allows up-casting a reference to
+/// `ReadTransaction` or `WriteTransaction` to `ConstTransaction`.
+pub trait TxExt {
+    #[allow(missing_docs)]
+    type Const;
+    /// Returns `self` as a handle to a `ConstTransaction` rather than the
+    /// subtype that was passed in.
+    ///
+    /// This is still a shared handle to the same transaction.
+    fn to_const(self) -> Self::Const;
+}
+
+impl<'a> TxExt for Rc<ReadTransaction<'a>> {
+    type Const = Rc<ConstTransaction<'a>>;
+    // This is safe, despite appearances. `ReadTransaction` (and below, also
+    // `WriteTransaction`) are newtypes, which are guaranteed to have exactly
+    // the same memory representation as the thing they wrap. Further, they
+    // have no `impl Drop` of their own, so the resulting drop code is exactly
+    // equal for both `Rc<ConstTransaction>` and `Rc<ReadTransaction>`.
+    fn to_const(self) -> Self::Const { unsafe { mem::transmute(self) } }
+}
+impl<'a> TxExt for Rc<WriteTransaction<'a>> {
+    type Const = Rc<ConstTransaction<'a>>;
+    fn to_const(self) -> Self::Const { unsafe { mem::transmute(self) } }
+}
+impl<'a> TxExt for Arc<ReadTransaction<'a>> {
+    type Const = Arc<ConstTransaction<'a>>;
+    fn to_const(self) -> Self::Const { unsafe { mem::transmute(self) } }
+}
+impl<'a> TxExt for Arc<WriteTransaction<'a>> {
+    type Const = Arc<ConstTransaction<'a>>;
+    fn to_const(self) -> Self::Const { unsafe { mem::transmute(self) } }
+}
+
+/// Types of transaction references which can be used to construct `Cursor`s.
+///
+/// In most cases this is simply used as an extension trait (see the examples
+/// on `Cursor`). However, it can also be used to abstract over things that can
+/// be used to create `Cursor`s if so desired.
+///
+/// Implementations are provided for references to the three general
+/// transaction types, as well as `Rc` and `Arc` directly wrapping either
+/// concrete transaction type with a `'static` lifetime.
+pub trait CreateCursor<'txn> {
+    /// Create a cursor using `self` as the reference to the containing
+    /// transaction and `db` as the database the cursor will read from and
+    /// write into.
+    fn cursor<'db, DB>(&self, db: DB)
+                       -> error::Result<Cursor<'txn,'db>>
+    where DB : Into<Supercow<'db, Database<'db>>>;
+}
+
+impl<'txn, 'env: 'txn> CreateCursor<'txn> for &'txn ConstTransaction<'env> {
+    #[inline]
+    fn cursor<'db, DB>(&self, db: DB)
+                       -> error::Result<Cursor<'txn,'db>>
+    where DB : Into<Supercow<'db, Database<'db>>> {
+        ConstTransaction::cursor(*self, db)
+    }
+}
+
+impl<'txn, 'env: 'txn> CreateCursor<'txn> for &'txn ReadTransaction<'env> {
+    #[inline]
+    fn cursor<'db, DB>(&self, db: DB)
+                       -> error::Result<Cursor<'txn,'db>>
+    where DB : Into<Supercow<'db, Database<'db>>> {
+        ConstTransaction::cursor(*self, db)
+    }
+}
+
+impl<'txn, 'env: 'txn> CreateCursor<'txn> for &'txn WriteTransaction<'env> {
+    #[inline]
+    fn cursor<'db, DB>(&self, db: DB)
+                       -> error::Result<Cursor<'txn,'db>>
+    where DB : Into<Supercow<'db, Database<'db>>> {
+        ConstTransaction::cursor(*self, db)
+    }
+}
+
+impl<'txn> CreateCursor<'txn> for Rc<ReadTransaction<'static>> {
+    #[inline]
+    fn cursor<'db, DB>(&self, db: DB)
+                       -> error::Result<Cursor<'txn,'db>>
+    where DB : Into<Supercow<'db, Database<'db>>> {
+        Cursor::construct(Supercow::shared(self.clone().to_const()),
+                          db.into())
+    }
+}
+
+impl<'txn> CreateCursor<'txn> for Arc<ReadTransaction<'static>> {
+    #[inline]
+    fn cursor<'db, DB>(&self, db: DB)
+                       -> error::Result<Cursor<'txn,'db>>
+    where DB : Into<Supercow<'db, Database<'db>>> {
+        Cursor::construct(Supercow::shared(self.clone().to_const()),
+                          db.into())
+    }
+}
+
+impl<'txn> CreateCursor<'txn> for Rc<WriteTransaction<'static>> {
+    #[inline]
+    fn cursor<'db, DB>(&self, db: DB)
+                       -> error::Result<Cursor<'txn,'db>>
+    where DB : Into<Supercow<'db, Database<'db>>> {
+        Cursor::construct(Supercow::shared(self.clone().to_const()),
+                          db.into())
+    }
+}
+
+impl<'txn> CreateCursor<'txn> for Arc<WriteTransaction<'static>> {
+    #[inline]
+    fn cursor<'db, DB>(&self, db: DB)
+                       -> error::Result<Cursor<'txn,'db>>
+    where DB : Into<Supercow<'db, Database<'db>>> {
+        Cursor::construct(Supercow::shared(self.clone().to_const()),
+                          db.into())
+    }
+}
+
+/// Types of transaction references which can be used to renew `StaleCursor`s
+/// into functional `Cursor`s.
+///
+/// In most cases this is simply used as an extension trait (see the examples
+/// on `Cursor`). However, it can also be used to abstract over things that can
+/// be used to create `Cursor`s if so desired.
+///
+/// Implementations are provided for normal references to `ReadTransaction` as
+/// well as `Rc` and `Arc`. The latter two require the transaction's inner
+/// lifetime to be `'static`.
+pub trait AssocCursor<'txn> {
+    /// Associates a saved read-only with this transaction.
+    ///
+    /// The cursor will be rebound to this transaction, but will continue using
+    /// the same database that it was previously.
+    fn assoc_cursor<'db>(&self, cursor: StaleCursor<'db>)
+                         -> error::Result<Cursor<'txn,'db>>;
+}
+
+impl<'txn,'env: 'txn> AssocCursor<'txn> for &'txn ReadTransaction<'env> {
+    fn assoc_cursor<'db>(&self, cursor: StaleCursor<'db>)
+                         -> error::Result<Cursor<'txn,'db>> {
+        ReadTransaction::assoc_cursor(*self, cursor)
+    }
+}
+
+impl<'txn> AssocCursor<'txn> for Rc<ReadTransaction<'static>> {
+    fn assoc_cursor<'db>(&self, cursor: StaleCursor<'db>)
+                         -> error::Result<Cursor<'txn,'db>> {
+        Cursor::from_stale(cursor, Supercow::shared(self.clone().to_const()))
+    }
+}
+
+impl<'txn> AssocCursor<'txn> for Arc<ReadTransaction<'static>> {
+    fn assoc_cursor<'db>(&self, cursor: StaleCursor<'db>)
+                         -> error::Result<Cursor<'txn,'db>> {
+        Cursor::from_stale(cursor, Supercow::shared(self.clone().to_const()))
+    }
+}
 
 /// Translates a value into a byte slice to be stored in LMDB.
 ///
@@ -92,10 +259,11 @@ pub trait FromReservedLmdbBytes {
 /// Implementing this trait provides blanket implementations of
 /// `AsLmdbBytes`, `FromLmdbBytes`, and `FromReservedLmdbBytes`.
 ///
-/// All integer and floating-point types have this trait, as well as
-/// fixed-width arrays of up to 32 `LmdbRaw` types, and the empty tuple.
-/// (One cannot use `LmdbRaw` with tuples in general, as the physical
-/// layout of tuples is not currently defined.)
+/// See also [`LmdbRawIfUnaligned`](trait.LmdbRawIfUnaligned.html) for types
+/// that become `LmdbRaw` when wrapped with
+/// [`Unaligned`](../struct.Unaligned.html). In particular, all integer and
+/// floating-point types are `LmdbRawIfUnaligned`, except for `u8` and `i8`
+/// which are also `LmdbRaw`.
 ///
 /// ## Alignment
 ///
@@ -215,8 +383,10 @@ pub unsafe trait LmdbRaw : Copy + Sized {
 /// client code to wrap the type in `Unaligned` to explicitly handle possible
 /// misalignment.
 ///
+/// All integer and floating-point types have this trait.
+///
 /// Note that `LmdbRawIfUnaligned` is not blanket-implemented for fixed-size
-/// arrays, because currently doing so would preclude a blanke implementation
+/// arrays, because currently doing so would preclude a blanket implementation
 /// of `LmdbRaw` for fixed-size arrays. Since the latter is generally more
 /// useful and is more consistent since variable-length slices can only
 /// usefully interact with `LmdbRaw`, that approach was chosen.

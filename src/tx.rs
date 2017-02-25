@@ -1,4 +1,5 @@
 // Copyright 2016 FullContact, Inc
+// Copyright 2017 Jason Lingle
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -14,6 +15,7 @@ use libc::c_uint;
 
 use ffi;
 use ffi2;
+use supercow::{Supercow, NonSyncSupercow};
 
 use env::{self, Environment, Stat};
 use dbi::{db, Database};
@@ -290,6 +292,11 @@ impl TxHandle {
 /// underlying database, but rather exclusivity for enforcement of child
 /// transaction semantics.
 ///
+/// ## Ownership
+///
+/// Transactions support all three ownership modes (but owned mode is not
+/// useful). See `ReadTransaction` and `WriteTransaction` for details.
+///
 /// ## Lifetime
 ///
 /// A `ConstTransaction` must be strictly outlived by its `Environment`.
@@ -314,7 +321,7 @@ impl TxHandle {
 /// parameter, eg `&'x lmdb::ConstTransaction<'x>`.
 #[derive(Debug)]
 pub struct ConstTransaction<'env> {
-    env: &'env Environment,
+    env: NonSyncSupercow<'env, Environment>,
     tx: TxHandle,
     has_yielded_accessor: Cell<bool>,
 }
@@ -325,20 +332,74 @@ pub struct ConstTransaction<'env> {
 /// `ReadTransaction` can additionally operate on cursors with a lifetime
 /// scoped to the environment instead of the transaction.
 ///
+/// ## Ownership
+///
+/// `ReadTransaction`s can be created with all three ownership modes (but owned
+/// mode is not useful).
+///
+/// ### Example — Shared mode
+///
+/// ```
+/// # include!("src/example_helpers.rs");
+/// use std::sync::Arc;
+///
+/// # fn main() {
+/// let env = Arc::new(create_env());
+/// let db = Arc::new(lmdb::Database::open(
+///   env.clone(), None, &lmdb::DatabaseOptions::defaults()).unwrap());
+///
+/// // Type and lifetime annotated explicitly for clarity
+/// let txn: lmdb::ReadTransaction<'static> = lmdb::ReadTransaction::new(
+///   env.clone()).unwrap();
+///
+/// // Do stuff with `txn`...
+/// # drop(txn); drop(db);
+/// # }
+/// ```
+///
 /// ## Lifetime
 ///
 /// All notes for `ConstTransaction` apply.
 #[derive(Debug)]
+// This MUST be a newtype struct and MUST NOT `impl Drop`
 pub struct ReadTransaction<'env>(ConstTransaction<'env>);
 /// A read-write LMDB transaction.
 ///
 /// In addition to all operations valid on `ConstTransaction`, it is also
 /// possible to perform writes to the underlying databases.
 ///
+///
+/// ## Ownership
+///
+/// `WriteTransaction`s can be created with all three ownership modes (but
+/// owned mode is not useful).
+///
+/// ### Example — Shared mode
+///
+/// ```
+/// # include!("src/example_helpers.rs");
+/// use std::sync::Arc;
+///
+/// # fn main() {
+/// let env = Arc::new(create_env());
+/// let db = Arc::new(lmdb::Database::open(
+///   env.clone(), None, &lmdb::DatabaseOptions::defaults()).unwrap());
+///
+/// // Type and lifetime annotated explicitly for clarity
+/// let txn: lmdb::WriteTransaction<'static> = lmdb::WriteTransaction::new(
+///   env.clone()).unwrap();
+///
+/// // Do stuff with `txn`...
+///
+/// txn.commit().unwrap();
+/// # }
+/// ```
+///
 /// ## Lifetime
 ///
 /// All notes for `ConstTransaction` apply.
 #[derive(Debug)]
+// This MUST be a newtype struct and MUST NOT `impl Drop`
 pub struct WriteTransaction<'env>(ConstTransaction<'env>);
 
 /// A read-only LMDB transaction that has been reset.
@@ -358,11 +419,11 @@ pub struct ResetTransaction<'env>(ReadTransaction<'env>);
 ///
 /// ## Lifetime
 ///
-/// A `ConstAccessor` must be outlived by its parent transaction (not
-/// necessarily strictly). The parent transaction cannot be destroyed
-/// (committed, etc) until the borrow from the accessor ends. This in many
-/// cases requires adding an extra scope (with bare `{ }` braces) in which to
-/// obtain the accessor, as can be seen in many of the examples.
+/// A `ConstAccessor` must be strictly outlived by its parent transaction. The
+/// parent transaction cannot be destroyed (committed, etc) until the borrow
+/// from the accessor ends. This in many cases requires adding an extra scope
+/// (with bare `{ }` braces) in which to obtain the accessor, as can be seen in
+/// many of the examples.
 ///
 /// The lifitem of a reference to a `ConstAccessor` dictates the lifetime of
 /// the data accessed via the accessor.
@@ -388,6 +449,15 @@ pub struct ResetTransaction<'env>(ReadTransaction<'env>);
 /// parameter, eg `&'x lmdb::ConstAccessor<'x>`.
 #[derive(Debug)]
 pub struct ConstAccessor<'txn>(&'txn ConstTransaction<'txn>);
+
+/// ConstAccessor implements Drop trait so that if it gets
+/// dropped, a new accessor can be safely obtained
+impl<'txn> Drop for ConstAccessor<'txn> {
+    fn drop(&mut self) {
+        self.0.has_yielded_accessor.set(false)
+    }
+}
+
 /// A read-write data accessor obtained from a `WriteTransaction`.
 ///
 /// All operations that can be performed on `ConstAccessor` can also be
@@ -433,13 +503,16 @@ pub struct ConstAccessor<'txn>(&'txn ConstTransaction<'txn>);
 pub struct WriteAccessor<'txn>(ConstAccessor<'txn>);
 
 impl<'env> ConstTransaction<'env> {
-    fn new<'outer: 'env>(env: &'env Environment,
-                         parent: Option<&'env mut ConstTransaction<'outer>>,
-                         flags: c_uint) -> Result<Self> {
+    fn new<'outer: 'env, E>(env: E,
+                            parent: Option<&'env mut ConstTransaction<'outer>>,
+                            flags: c_uint) -> Result<Self>
+    where E : Into<NonSyncSupercow<'env, Environment>> {
+        let env : NonSyncSupercow<'env, Environment> = env.into();
+
         let mut rawtx: *mut ffi::MDB_txn = ptr::null_mut();
         unsafe {
             lmdb_call!(ffi::mdb_txn_begin(
-                env::env_ptr(env), parent.map_or(ptr::null_mut(), |p| p.tx.0),
+                env::env_ptr(&env), parent.map_or(ptr::null_mut(), |p| p.tx.0),
                 flags, &mut rawtx));
         }
 
@@ -452,9 +525,18 @@ impl<'env> ConstTransaction<'env> {
 
     /// Returns an accessor used to manipulate data in this transaction.
     ///
+    /// ## Ownership
+    ///
+    /// Unlike most other lmdb-zero APIs, accessors do not support shared
+    /// ownership modes (e.g., where the accessor would hold on to a
+    /// `Rc<ConstTransaction>`). If you need dynamically-managed lifetime,
+    /// instead simply drop the accessor and get a new one the next time one is
+    /// needed.
+    ///
     /// ## Panics
     ///
-    /// Panics if this function has already been called on this transaction.
+    /// Panics if this function has already been called on this transaction and
+    /// the returned value has not yet been dropped.
     ///
     /// ## Example
     ///
@@ -467,9 +549,9 @@ impl<'env> ConstTransaction<'env> {
     /// // Get access the first time
     /// let access = txn.access();
     ///
-    /// // You can't get the accessor again, since this would create two
-    /// // references to the same logical memory and allow creating aliased
-    /// // mutable references and so forth.
+    /// // You can't get the accessor again in the same scope, since this
+    /// // would create two references to the same logical memory and allow
+    /// // creating aliased mutable references and so forth.
     /// let access2 = txn.access(); // PANIC!
     /// # }
     /// ```
@@ -483,17 +565,19 @@ impl<'env> ConstTransaction<'env> {
 
     /// Creates a new cursor scoped to this transaction, bound to the given
     /// database.
+    ///
+    /// This method is functionally equivalent to the method on `CreateCursor`
+    /// and exists for convenience and backwards-compatibility.
+    ///
+    /// If you have an, e.g., `Rc<ReadTransaction>` and want to get a
+    /// `Cursor<'static,'db>`, make sure you have the `CreateCursor` trait
+    /// imported so that the needed alternate implementations of this method
+    /// are available.
     #[inline]
-    pub fn cursor<'txn, 'db>(&'txn self, db: &'db Database)
-                             -> Result<Cursor<'txn,'db>> {
-        try!(db.assert_same_env(self.env));
-
-        let mut raw: *mut ffi::MDB_cursor = ptr::null_mut();
-        unsafe {
-            lmdb_call!(ffi::mdb_cursor_open(self.tx.0, db.dbi(), &mut raw));
-        }
-
-        Ok(unsafe { cursor::create_cursor(raw, self) })
+    pub fn cursor<'txn, 'db, DB>(&'txn self, db: DB)
+                                 -> Result<Cursor<'txn,'db>>
+    where DB : Into<Supercow<'db, Database<'db>>> {
+        Cursor::construct(Supercow::borrowed(self), db.into())
     }
 
     /// Returns the internal id of this transaction.
@@ -505,7 +589,7 @@ impl<'env> ConstTransaction<'env> {
 
     /// Retrieves statistics for a database.
     pub fn db_stat(&self, db: &Database) -> Result<Stat> {
-        try!(db.assert_same_env(self.env));
+        try!(db.assert_same_env(&self.env));
 
         unsafe {
             let mut raw: ffi::MDB_stat = mem::zeroed();
@@ -516,7 +600,7 @@ impl<'env> ConstTransaction<'env> {
 
     /// Retrieve the DB flags for a database handle.
     pub fn db_flags(&self, db: &Database) -> Result<db::Flags> {
-        try!(db.assert_same_env(self.env));
+        try!(db.assert_same_env(&self.env));
 
         let mut raw: c_uint = 0;
         unsafe {
@@ -526,10 +610,10 @@ impl<'env> ConstTransaction<'env> {
     }
 
     #[inline]
-    fn assert_sensible_cursor<'a>(&self, cursor: &Cursor<'env,'a>)
-                                  -> Result<()> {
-        if self as *const ConstTransaction<'env> !=
-            cursor::txn_ref(cursor) as *const ConstTransaction<'env>
+    fn assert_sensible_cursor(&self, cursor: &Cursor)
+                              -> Result<()> {
+        if self as *const ConstTransaction !=
+            cursor::txn_ref(cursor) as *const ConstTransaction
         {
             Err(Error::Mismatch)
         } else {
@@ -543,6 +627,24 @@ impl<'env> ConstTransaction<'env> {
 pub fn assert_sensible_cursor(access: &ConstAccessor, cursor: &Cursor)
                               -> Result<()> {
     access.0.assert_sensible_cursor(cursor)
+}
+#[inline]
+pub fn assert_same_env(txn: &ConstTransaction, db: &Database)
+                       -> Result<()> {
+    db.assert_same_env(&txn.env)
+}
+#[inline]
+pub fn assert_in_env(txn: &ConstTransaction, env: &Environment)
+                     -> Result<()> {
+    if env as *const Environment != &*txn.env as *const Environment {
+        Err(Error::Mismatch)
+    } else {
+        Ok(())
+    }
+}
+#[inline]
+pub fn txptr(txn: &ConstTransaction) -> *mut ffi::MDB_txn {
+    txn.tx.0
 }
 
 impl<'env> Deref for ReadTransaction<'env> {
@@ -569,7 +671,8 @@ impl<'env> ReadTransaction<'env> {
     /// transaction at a time. If `NOTLS` is in use, this does not apply to
     /// read-only transactions. Attempting to open a read-only transaction
     /// while the current thread holds a read-write transaction will deadlock.
-    pub fn new(env: &'env Environment) -> Result<Self> {
+    pub fn new<E>(env: E) -> Result<Self>
+    where E : Into<NonSyncSupercow<'env, Environment>> {
         Ok(ReadTransaction(try!(ConstTransaction::new(
             env, None, ffi::MDB_RDONLY))))
     }
@@ -609,30 +712,81 @@ impl<'env> ReadTransaction<'env> {
     /// }
     /// # }
     /// ```
+    ///
+    /// ## Example — Shared ownership mode
+    ///
+    /// Cursors can also be dissociated and reassociated with transactions with
+    /// shared ownership mode. This can also include changing the ownership
+    /// mode. To be able to use shared ownership mode, make sure that the
+    /// `AssocCursor` trait is imported or else you will simply borrow the
+    /// inner transaction instead of taking a copy of the `Rc`, etc.
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// use std::sync::Arc;
+    ///
+    /// use lmdb::traits::{AssocCursor, CreateCursor};
+    ///
+    /// # fn main() {
+    /// // N.B. Unnecessary type and lifetime annotations included for clarity
+    /// let env: Arc<lmdb::Environment> = Arc::new(create_env());
+    /// let db: Arc<lmdb::Database<'static>> = Arc::new(lmdb::Database::open(
+    ///   env.clone(), None, &lmdb::DatabaseOptions::defaults()).unwrap());
+    ///
+    /// let mut saved_cursor: lmdb::StaleCursor<'static>;
+    /// {
+    ///   // `Arc` is unnecessary in this trivial example, but let's pretend
+    ///   // there was good use for this.
+    ///   let txn: Arc<lmdb::ReadTransaction> = Arc::new(
+    ///     lmdb::ReadTransaction::new(env.clone()).unwrap());
+    ///   let cursor: lmdb::Cursor<'static, 'static> =
+    ///     txn.cursor(db.clone()).unwrap();
+    ///
+    ///   // Do some stuff with `txn` and `cursor`
+    ///
+    ///   // We don't want to realloc `cursor` next time, so save it away
+    ///   saved_cursor = txn.dissoc_cursor(cursor).unwrap();
+    /// }
+    ///
+    /// {
+    ///   let txn: Arc<lmdb::ReadTransaction<'static>> =
+    ///     Arc::new(lmdb::ReadTransaction::new(env.clone()).unwrap());
+    ///   // Rebind the old cursor. It continues operating on `db`.
+    ///   let cursor: lmdb::Cursor<'static, 'static> =
+    ///     txn.assoc_cursor(saved_cursor).unwrap();
+    ///   // Do stuff with txn, cursor
+    ///
+    ///   // We can save the cursor away again
+    ///   saved_cursor = txn.dissoc_cursor(cursor).unwrap();
+    /// }
+    /// # }
+    /// ```
     pub fn dissoc_cursor<'txn,'db>(&self, cursor: Cursor<'txn,'db>)
                                    -> Result<StaleCursor<'db>>
     where 'env: 'db {
         try!(self.assert_sensible_cursor(&cursor));
-        Ok(cursor::to_stale(cursor, self.env))
+        let env = Supercow::clone_non_owned(&self.env)
+            .expect("Cannot use owned `Environment` with `dissoc_cursor`");
+        Ok(cursor::to_stale(cursor, env))
     }
 
     /// Associates a saved read-only with this transaction.
     ///
     /// The cursor will be rebound to this transaction, but will continue using
     /// the same database that it was previously.
+    ///
+    /// This method is functionally equivalent to the method on `AssocCursor`
+    /// and exists for convenience and backwards-compatibility.
+    ///
+    /// If you have an, e.g., `Rc<ReadTransaction>` and want to get a
+    /// `Cursor<'static,'db>`, make sure you have the `AssocCursor` trait
+    /// imported so that the needed alternate implementations of this method
+    /// are available.
     pub fn assoc_cursor<'txn,'db>(&'txn self, cursor: StaleCursor<'db>)
                                   -> Result<Cursor<'txn,'db>> {
-        if self.env as *const Environment !=
-            cursor::env_ref(&cursor) as *const Environment
-        {
-            return Err(Error::Mismatch)
-        }
-
-        unsafe {
-            lmdb_call!(ffi::mdb_cursor_renew(
-                self.tx.0, cursor::stale_cursor_ptr(&cursor)));
-        }
-        Ok(cursor::from_stale(cursor, self))
+        let self_as_const: &'txn ConstTransaction = &*self;
+        Cursor::from_stale(cursor,
+                           NonSyncSupercow::borrowed(&*self_as_const))
     }
 
     /// Resets this transaction, releasing most of its resources but allowing
@@ -682,7 +836,6 @@ impl<'env> ResetTransaction<'env> {
     /// reading.
     pub fn renew(self) -> Result<ReadTransaction<'env>> {
         unsafe { lmdb_call!(ffi::mdb_txn_renew((self.0).0.tx.0)); }
-        self.0.has_yielded_accessor.set(false);
         Ok(self.0)
     }
 }
@@ -712,7 +865,8 @@ impl<'env> WriteTransaction<'env> {
     /// read-write transaction at a time (even if `NOTLS` is in use --- trying
     /// to start two top-level read-write transactions on the same thread will
     /// deadlock).
-    pub fn new(env: &'env Environment) -> Result<Self> {
+    pub fn new<E>(env: E) -> Result<Self>
+    where E : Into<NonSyncSupercow<'env, Environment>> {
         Ok(WriteTransaction(try!(ConstTransaction::new(env, None, 0))))
     }
 
@@ -791,11 +945,7 @@ impl<'env> WriteTransaction<'env> {
     /// ```
     pub fn child_tx<'a>(&'a mut self) -> Result<WriteTransaction<'a>>
     where 'env: 'a {
-        // Allow the caller to later retrieve a new accessor, since the borrow
-        // rules ensure that they've destroyed the old one.
-        self.has_yielded_accessor.set(false);
-
-        let env = self.0.env;
+        let env = Supercow::share(&mut self.0.env);
         Ok(WriteTransaction(try!(ConstTransaction::new(
             env, Some(&mut*self), 0))))
     }
@@ -811,7 +961,8 @@ impl<'env> WriteTransaction<'env> {
     ///
     /// ## Panics
     ///
-    /// Panics if called more than once on the same transaction.
+    /// Panics if an accessor has already been obtained from this transaction
+    /// and not yet dropped.
     #[inline]
     pub fn access(&self) -> WriteAccessor {
         WriteAccessor(self.0.access())
@@ -860,7 +1011,7 @@ impl<'txn> ConstAccessor<'txn> {
     }
 
     fn env(&self) -> &Environment {
-        self.0.env
+        &*self.0.env
     }
 }
 
