@@ -39,6 +39,9 @@ is of course possible there are bugs in handling alignment here.
 
 ## Changelog
 
+**0.4.1**: Tests updated to work on Rust 1.20. `bitflags` dependency updated.
+  Neither of these are expected to have any impact on external code.
+
 **0.4.0**: Minor breaking changes. `ConstAccessor` and `WriteAccessor` can now
   be dropped and re-obtained. Most types now support additional
   ownership/borrowing modes, which allows for dynamic lifetime management and
