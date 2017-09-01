@@ -1,4 +1,5 @@
 // Copyright 2016 FullContact, Inc
+// Copyright 2017 Jason Lingle
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -25,7 +26,7 @@ pub mod open {
 
     bitflags! {
         /// Flags used when opening an LMDB environment.
-        pub flags Flags: libc::c_uint {
+        pub struct Flags : libc::c_uint {
             /// Use a fixed address for the mmap region. This flag must be
             /// specified when creating the environment, and is stored
             /// persistently in the environment. If successful, the memory map
@@ -35,17 +36,17 @@ pub mod open {
             /// depending on how the operating system has allocated memory to
             /// shared libraries and other uses. The feature is highly
             /// experimental.
-            const FIXEDMAP = ffi::MDB_FIXEDMAP,
+            const FIXEDMAP = ffi::MDB_FIXEDMAP;
             /// By default, LMDB creates its environment in a directory whose
             /// pathname is given in path, and creates its data and lock files
             /// under that directory. With this option, the `path` passed to
             /// `EnvBuilder::open` is used as-is for the database main data
             /// file. The database lock file is the path with "-lock" appended.
-            const NOSUBDIR = ffi::MDB_NOSUBDIR,
+            const NOSUBDIR = ffi::MDB_NOSUBDIR;
             /// Open the environment in read-only mode. No write operations
             /// will be allowed. LMDB will still modify the lock file - except
             /// on read-only filesystems, where LMDB does not use locks.
-            const RDONLY = ffi::MDB_RDONLY,
+            const RDONLY = ffi::MDB_RDONLY;
             /// Use a writeable memory map unless `RDONLY` is set. This is
             /// faster and uses fewer mallocs, but loses protection from
             /// application bugs like wild pointer writes and other bad updates
@@ -53,7 +54,7 @@ pub mod open {
             /// not mix processes with and without `WRITEMAP` on the same
             /// environment. This can defeat durability (`Environment::sync`
             /// etc).
-            const WRITEMAP = ffi::MDB_WRITEMAP,
+            const WRITEMAP = ffi::MDB_WRITEMAP;
             /// Flush system buffers to disk only once per transaction, omit
             /// the metadata flush. Defer that until the system flushes files
             /// to disk, or next non-`RDONLY` commit or `Environment::sync()`.
@@ -62,7 +63,7 @@ pub mod open {
             /// preserves the ACI (atomicity, consistency, isolation) but not D
             /// (durability) database property. This flag may be changed at any
             /// time using `Environment::set_flags()`.
-            const NOMETASYNC = ffi::MDB_NOMETASYNC,
+            const NOMETASYNC = ffi::MDB_NOMETASYNC;
             /// Don't flush system buffers to disk when committing a
             /// transaction. This optimization means a system crash can corrupt
             /// the database or lose the last transactions if buffers are not
@@ -78,13 +79,13 @@ pub mod open {
             /// `Environment::sync()` is called. `(MAPASYNC | WRITEMAP)` may be
             /// preferable. This flag may be changed at any time using
             /// `Environment::set_flags()`.
-            const NOSYNC = ffi::MDB_NOSYNC,
+            const NOSYNC = ffi::MDB_NOSYNC;
             /// When using `WRITEMAP`, use asynchronous flushes to disk. As
             /// with `NOSYNC`, a system crash can then corrupt the database or
             /// lose the last transactions. Calling `Environment::sync()`
             /// ensures on-disk database integrity until next commit. This flag
             /// may be changed at any time using `Environment::set_flags()`.
-            const MAPASYNC = ffi::MDB_MAPASYNC,
+            const MAPASYNC = ffi::MDB_MAPASYNC;
             /// Don't use Thread-Local Storage. Tie reader locktable slots to
             /// transaction objects instead of to threads. I.e.
             /// `Transaction::reset()` keeps the slot reseved for the
@@ -95,7 +96,7 @@ pub mod open {
             /// an application must also serialize the write transactions in an
             /// OS thread, since LMDB's write locking is unaware of the user
             /// threads.
-            const NOTLS = ffi::MDB_NOTLS,
+            const NOTLS = ffi::MDB_NOTLS;
             /// Don't do any locking. If concurrent access is anticipated, the
             /// caller must manage all concurrency itself. For proper operation
             /// the caller must enforce single-writer semantics, and must
@@ -103,13 +104,13 @@ pub mod open {
             /// writer is active. The simplest approach is to use an exclusive
             /// lock so that no readers may be active at all when a writer
             /// begins.
-            const NOLOCK = ffi::MDB_NOLOCK,
+            const NOLOCK = ffi::MDB_NOLOCK;
             /// Turn off readahead. Most operating systems perform readahead on
             /// read requests by default. This option turns it off if the OS
             /// supports it. Turning it off may help random read performance
             /// when the DB is larger than RAM and system RAM is full. The
             /// option is not implemented on Windows.
-            const NORDAHEAD = ffi::MDB_NORDAHEAD,
+            const NORDAHEAD = ffi::MDB_NORDAHEAD;
             /// Don't initialize malloc'd memory before writing to unused
             /// spaces in the data file. By default, memory for pages written
             /// to the data file is obtained using malloc. While these pages
@@ -129,7 +130,7 @@ pub mod open {
             /// `RESERVE` is used; the caller is expected to overwrite all of
             /// the memory that was reserved in that case. This flag may be
             /// changed at any time using `Environment::set_flags()`.
-            const NOMEMINIT = ffi::MDB_NOMEMINIT,
+            const NOMEMINIT = ffi::MDB_NOMEMINIT;
         }
     }
 }
@@ -141,11 +142,11 @@ pub mod copy {
 
     bitflags! {
         /// Flags used when copying an LMDB environment.
-        pub flags Flags : libc::c_uint {
+        pub struct Flags : libc::c_uint {
             /// Perform compaction while copying: omit free pages and sequentially
             /// renumber all pages in output. This option consumes more CPU and
             /// runs more slowly than the default.
-            const COMPACT = ffi2::MDB_CP_COMPACT,
+            const COMPACT = ffi2::MDB_CP_COMPACT;
         }
     }
 }

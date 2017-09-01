@@ -29,7 +29,7 @@ pub mod db {
 
     bitflags! {
         /// Flags used when opening databases.
-        pub flags Flags : libc::c_uint {
+        pub struct Flags : libc::c_uint {
             /// Keys are strings to be compared in reverse order, from the end
             /// of the strings to the beginning. By default, Keys are treated
             /// as strings and compared from beginning to end.
@@ -64,7 +64,7 @@ pub mod db {
             /// txn.commit().unwrap();
             /// # }
             /// ```
-            const REVERSEKEY = ffi::MDB_REVERSEKEY,
+            const REVERSEKEY = ffi::MDB_REVERSEKEY;
             /// Duplicate keys may be used in the database. (Or, from another
             /// perspective, keys may have multiple data items, stored in
             /// sorted order.) By default keys must be unique and may have only
@@ -95,7 +95,7 @@ pub mod db {
             /// txn.commit().unwrap();
             /// # }
             /// ```
-            const DUPSORT = ffi::MDB_DUPSORT,
+            const DUPSORT = ffi::MDB_DUPSORT;
             /// Keys are binary integers in native byte order, either
             /// `libc::c_uint` or `libc::size_t`, and will be sorted as such.
             /// The keys must all be of the same size.
@@ -133,7 +133,7 @@ pub mod db {
             /// txn.commit().unwrap();
             /// # }
             /// ```
-            const INTEGERKEY = ffi::MDB_INTEGERKEY,
+            const INTEGERKEY = ffi::MDB_INTEGERKEY;
             /// This flag may only be used in combination with `DUPSORT`. This
             /// option tells the library that the data items for this database
             /// are all the same size, which allows further optimizations in
@@ -205,10 +205,10 @@ pub mod db {
             /// txn.commit().unwrap();
             /// # }
             /// ```
-            const DUPFIXED = ffi::MDB_DUPFIXED,
+            const DUPFIXED = ffi::MDB_DUPFIXED;
             /// This option specifies that duplicate data items are binary
             /// integers, similar to `INTEGERKEY` keys.
-            const INTEGERDUP = ffi::MDB_INTEGERDUP,
+            const INTEGERDUP = ffi::MDB_INTEGERDUP;
             /// This option specifies that duplicate data items should be
             /// compared as strings in reverse order.
             ///
@@ -241,10 +241,10 @@ pub mod db {
             /// txn.commit().unwrap();
             /// # }
             /// ```
-            const REVERSEDUP = ffi::MDB_REVERSEDUP,
+            const REVERSEDUP = ffi::MDB_REVERSEDUP;
             /// Create the named database if it doesn't exist. This option is
             /// not allowed in a read-only environment.
-            const CREATE = ffi::MDB_CREATE,
+            const CREATE = ffi::MDB_CREATE;
         }
     }
 }

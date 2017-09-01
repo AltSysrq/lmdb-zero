@@ -36,7 +36,7 @@ pub mod put {
         /// because their memory ownership and/or parameter semantics are
         /// different. `CURRENT` is expressed separately on the cursor
         /// functions.
-        pub flags Flags : libc::c_uint {
+        pub struct Flags : libc::c_uint {
             /// Enter the new key/data pair only if it does not already appear
             /// in the database. This flag may only be specified if the
             /// database was opened with `DUPSORT`. The function will return
@@ -97,7 +97,7 @@ pub mod put {
             /// txn.commit().unwrap();
             /// # }
             /// ```
-            const NODUPDATA = ffi::MDB_NODUPDATA,
+            const NODUPDATA = ffi::MDB_NODUPDATA;
             /// Enter the new key/data pair only if the key does not already
             /// appear in the database. The function will return `KEYEXIST` if
             /// the key already appears in the database, even if the database
@@ -160,7 +160,7 @@ pub mod put {
             /// ```
             // TODO: "The data parameter will be set to point to the existing
             // item." We should provide functionality to support that.
-            const NOOVERWRITE = ffi::MDB_NOOVERWRITE,
+            const NOOVERWRITE = ffi::MDB_NOOVERWRITE;
             /// Append the given key/data pair to the end of the database. This
             /// option allows fast bulk loading when keys are already known to
             /// be in the correct order. Loading unsorted keys with this flag
@@ -189,9 +189,9 @@ pub mod put {
             /// txn.commit().unwrap();
             /// # }
             /// ```
-            const APPEND = ffi::MDB_APPEND,
+            const APPEND = ffi::MDB_APPEND;
             /// As with `APPEND` above, but for sorted dup data.
-            const APPENDDUP = ffi::MDB_APPENDDUP,
+            const APPENDDUP = ffi::MDB_APPENDDUP;
         }
     }
 }
@@ -203,7 +203,7 @@ pub mod del {
 
     bitflags! {
         /// Flags used when deleting items via cursors.
-        pub flags Flags : libc::c_uint {
+        pub struct Flags : libc::c_uint {
             /// Delete all of the data items for the current key instead of
             /// just the current item. This flag may only be specified if the
             /// database was opened with `DUPSORT`.
@@ -239,7 +239,7 @@ pub mod del {
             /// txn.commit().unwrap();
             /// # }
             /// ```
-            const NODUPDATA = ffi::MDB_NODUPDATA,
+            const NODUPDATA = ffi::MDB_NODUPDATA;
         }
     }
 }
