@@ -638,6 +638,11 @@ impl<'a> Database<'a> {
     /// # }
     /// ```
     ///
+    /// ### Open a database on a read-only environment
+    ///
+    /// Databases can be opened in read-only environments as long as they
+    /// already exist.
+    ///
     /// ```
     /// # include!("src/example_helpers.rs");
     /// # fn main() {
@@ -659,9 +664,14 @@ impl<'a> Database<'a> {
     /// #     lmdb::open::RDONLY, 0o400).unwrap() }
     /// # };
     /// {
+    ///   // Succeeds -- The DB already exists
     ///   let db = lmdb::Database::open(
     ///     &env, None,
     ///     &lmdb::DatabaseOptions::new(lmdb::db::Flags::empty())).unwrap();
+    ///   // Fails -- Can't create a new one in read-only mode
+    ///   assert!(lmdb::Database::open(
+    ///     &env, Some("name"),
+    ///     &lmdb::DatabaseOptions::new(lmdb::db::CREATE)).is_err());
     /// }
     /// # }
     /// ```
