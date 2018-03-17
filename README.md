@@ -42,6 +42,9 @@ is of course possible there are bugs in handling alignment here.
 
 ## Changelog
 
+**0.4.2**: Fix being unable to open databases in read-only environments. Fix
+  future-incompatibility warning arising from `Unaligned`.
+
 **0.4.1**: Tests updated to work on Rust 1.20. `bitflags` dependency updated.
   Neither of these are expected to have any impact on external code.
 
