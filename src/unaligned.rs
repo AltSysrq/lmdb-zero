@@ -40,8 +40,15 @@ use traits::*;
 /// }
 /// ```
 #[repr(packed)]
-#[derive(Clone,Copy)]
 pub struct Unaligned<T : LmdbRawIfUnaligned>(T);
+
+impl<T : LmdbRawIfUnaligned> Clone for Unaligned<T> {
+    fn clone(&self) -> Self {
+        Unaligned(self.0)
+    }
+}
+
+impl<T : LmdbRawIfUnaligned> Copy for Unaligned<T> { }
 
 unsafe impl<T : LmdbRawIfUnaligned> LmdbRaw for Unaligned<T> {
     fn reported_type() -> String {
