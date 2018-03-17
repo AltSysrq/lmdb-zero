@@ -637,6 +637,34 @@ impl<'a> Database<'a> {
     /// }
     /// # }
     /// ```
+    ///
+    /// ```
+    /// # include!("src/example_helpers.rs");
+    /// # fn main() {
+    /// # let tdir = tempdir::TempDir::new_in(".", "lmdbzero").unwrap();
+    /// # {
+    /// #   let mut builder = lmdb::EnvBuilder::new().unwrap();
+    /// #   builder.set_maxdbs(2).unwrap();
+    /// #   let env = unsafe { builder.open(
+    /// #     tdir.path().to_str().unwrap(),
+    /// #     lmdb::open::Flags::empty(), 0o600).unwrap() };
+    /// #   let db = lmdb::Database::open(
+    /// #     &env, None, &lmdb::DatabaseOptions::defaults()).unwrap();
+    /// # }
+    /// # let env = {
+    /// #   let mut builder = lmdb::EnvBuilder::new().unwrap();
+    /// #   builder.set_maxdbs(2).unwrap();
+    /// #   unsafe { builder.open(
+    /// #     tdir.path().to_str().unwrap(),
+    /// #     lmdb::open::RDONLY, 0o400).unwrap() }
+    /// # };
+    /// {
+    ///   let db = lmdb::Database::open(
+    ///     &env, None,
+    ///     &lmdb::DatabaseOptions::new(lmdb::db::Flags::empty())).unwrap();
+    /// }
+    /// # }
+    /// ```
     pub fn open<E>(env: E, name: Option<&str>,
                    options: &DatabaseOptions)
                    -> Result<Database<'a>>
@@ -649,14 +677,19 @@ impl<'a> Database<'a> {
             Some(s) => Some(try!(CString::new(s))),
         };
         let raw = unsafe {
+            use env;
             // Locking the hash set here is also used to serialise calls to
             // `mdb_dbi_open()`, which are not permitted to be concurrent.
             let mut locked_dbis = env::env_open_dbis(&env).lock()
                 .expect("open_dbis lock poisoned");
 
             let mut raw_tx: *mut ffi::MDB_txn = ptr::null_mut();
+            let mut txn_flags = 0;
+            if env.flags().unwrap().contains(env::open::RDONLY) {
+                txn_flags = ffi::MDB_RDONLY;
+            }
             lmdb_call!(ffi::mdb_txn_begin(
-                env::env_ptr(&env), ptr::null_mut(), 0, &mut raw_tx));
+                env::env_ptr(&env), ptr::null_mut(), txn_flags, &mut raw_tx));
             let mut wrapped_tx = TxHandle(raw_tx); // For auto-closing etc
             lmdb_call!(ffi::mdb_dbi_open(
                 raw_tx, name_cstr.as_ref().map_or(ptr::null(), |s| s.as_ptr()),
