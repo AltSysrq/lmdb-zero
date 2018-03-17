@@ -14,6 +14,9 @@ An almost-safe, near-zero-cost, feature-complete, unabashedly non-abstract
 wrapper around LMDB.
 """
 
+[badges]
+travis-ci = { repository = "AltSysrq/lmdb-zero" }
+
 [dependencies]
 liblmdb-sys = "0.2.2"
 bitflags = "0.9.1"

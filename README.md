@@ -1,5 +1,8 @@
 # lmdb-zero
 
+[![Build Status](https://travis-ci.org/AltSysrq/lmdb-zero.svg?branch=master)](https://travis-ci.org/AltSysrq/lmdb-zero)
+[![](http://meritbadge.herokuapp.com/lmdb-zero)](https://crates.io/crates/lmdb-zero)
+
 lmdb-zero is a near-zero-cost wrapper around [LMDB](http://lmdb.tech/) designed
 to allow using the full range of features offered by LMDB while keeping it
 reasonably easy to write safe programs.
