@@ -76,7 +76,7 @@ CursorIter<'a, 'access, 'txn, 'db, T> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// # let db = dupdb(&env);

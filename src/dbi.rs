@@ -40,7 +40,7 @@ pub mod db {
             /// ## Example
             ///
             /// ```
-            /// # include!("src/example_helpers.rs");
+            /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
             /// # fn main() {
             /// # let env = create_env();
             /// let db = lmdb::Database::open(
@@ -72,7 +72,7 @@ pub mod db {
             ///
             /// ## Example
             /// ```
-            /// # include!("src/example_helpers.rs");
+            /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
             /// # fn main() {
             /// # let env = create_env();
             /// let db = lmdb::Database::open(
@@ -103,7 +103,7 @@ pub mod db {
             /// ## Example
             ///
             /// ```
-            /// # include!("src/example_helpers.rs");
+            /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
             /// # fn main() {
             /// # let env = create_env();
             /// use lmdb::unaligned as u;
@@ -150,7 +150,7 @@ pub mod db {
             /// ## Example
             ///
             /// ```
-            /// # include!("src/example_helpers.rs");
+            /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
             /// # fn main() {
             /// # let env = create_env();
             /// use lmdb::Unaligned as U;
@@ -217,7 +217,7 @@ pub mod db {
             ///
             /// ## Example
             ///
-            /// # include!("src/example_helpers.rs");
+            /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
             /// # fn main() {
             /// # let env = create_env();
             /// let db = lmdb::Database::open(
@@ -306,7 +306,7 @@ impl<'a> Drop for DbHandle<'a> {
 /// alleviates the need to track both the `Environment` and the `Database`.
 ///
 /// ```
-/// # include!("src/example_helpers.rs");
+/// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
 /// fn setup() -> lmdb::Database<'static> {
 ///   // N.B. Unneeded type and lifetime annotations included for clarity.
 ///   let env: lmdb::Environment = create_env();
@@ -342,7 +342,7 @@ impl<'a> Drop for DbHandle<'a> {
 ///
 /// ```
 /// # #![allow(dead_code)]
-/// # include!("src/example_helpers.rs");
+/// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
 /// use std::sync::Arc;
 ///
 /// struct ApplicationContext {
@@ -435,7 +435,7 @@ impl DatabaseOptions {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// #[repr(C, packed)]
     /// #[derive(Clone,Copy,Debug,PartialEq,Eq,PartialOrd,Ord)]
     /// struct MyStruct {
@@ -592,7 +592,7 @@ impl<'a> Database<'a> {
     /// ### Open the default database with default options
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # #[allow(unused_vars)]
     /// # fn main() {
     /// # let env = create_env();
@@ -607,7 +607,7 @@ impl<'a> Database<'a> {
     /// ### Open a named database, creating it if it doesn't exist
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # #[allow(unused_vars)]
     /// # fn main() {
     /// # let env = create_env();
@@ -624,7 +624,7 @@ impl<'a> Database<'a> {
     ///
     /// ### Trying to open the same database more than once
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # #[allow(unused_vars)]
     /// # fn main() {
     /// # let env = create_env();
@@ -644,7 +644,7 @@ impl<'a> Database<'a> {
     /// already exist.
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let tdir = tempdir::TempDir::new_in(".", "lmdbzero").unwrap();
     /// # {
@@ -741,7 +741,7 @@ impl<'a> Database<'a> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # #[allow(unused_vars)]
     /// # fn main() {
     /// # let env = create_env();
@@ -787,7 +787,7 @@ impl<'a> Database<'a> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # #[allow(unused_vars)]
     /// # fn main() {
     /// let env: lmdb::Environment = create_env();

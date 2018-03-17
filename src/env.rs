@@ -348,7 +348,7 @@ impl Environment {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// let out = tempdir::TempDir::new_in(".", "lmdbcopy").unwrap();
@@ -450,7 +450,7 @@ impl Environment {
     ///
     /// ## Example
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// unsafe {

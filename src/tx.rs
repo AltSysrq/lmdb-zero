@@ -46,7 +46,7 @@ pub mod put {
             /// ## Example
             ///
             /// ```
-            /// # include!("src/example_helpers.rs");
+            /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
             /// # fn main() {
             /// # let env = create_env();
             /// let db = lmdb::Database::open(
@@ -74,7 +74,7 @@ pub mod put {
             /// error.
             ///
             /// ```
-            /// # include!("src/example_helpers.rs");
+            /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
             /// # fn main() {
             /// # let env = create_env();
             /// let db = lmdb::Database::open(
@@ -108,7 +108,7 @@ pub mod put {
             /// ### In a 1:1 database
             ///
             /// ```
-            /// # include!("src/example_helpers.rs");
+            /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
             /// # fn main() {
             /// # let env = create_env();
             /// let db = lmdb::Database::open(
@@ -132,7 +132,7 @@ pub mod put {
             /// ### In a `DUPSORT` database
             ///
             /// ```
-            /// # include!("src/example_helpers.rs");
+            /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
             /// # fn main() {
             /// # let env = create_env();
             /// let db = lmdb::Database::open(
@@ -169,7 +169,7 @@ pub mod put {
             /// ## Example
             ///
             /// ```
-            /// # include!("src/example_helpers.rs");
+            /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
             /// # fn main() {
             /// # let env = create_env();
             /// let db = lmdb::Database::open(
@@ -211,7 +211,7 @@ pub mod del {
             /// ## Example
             ///
             /// ```
-            /// # include!("src/example_helpers.rs");
+            /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
             /// # fn main() {
             /// # let env = create_env();
             /// let db = lmdb::Database::open(
@@ -340,7 +340,7 @@ pub struct ConstTransaction<'env> {
 /// ### Example — Shared mode
 ///
 /// ```
-/// # include!("src/example_helpers.rs");
+/// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
 /// use std::sync::Arc;
 ///
 /// # fn main() {
@@ -377,7 +377,7 @@ pub struct ReadTransaction<'env>(ConstTransaction<'env>);
 /// ### Example — Shared mode
 ///
 /// ```
-/// # include!("src/example_helpers.rs");
+/// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
 /// use std::sync::Arc;
 ///
 /// # fn main() {
@@ -541,7 +541,7 @@ impl<'env> ConstTransaction<'env> {
     /// ## Example
     ///
     /// ```rust,should_panic
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # #[allow(unused_vars)]
     /// # fn main() {
     /// # let env = create_env();
@@ -685,7 +685,7 @@ impl<'env> ReadTransaction<'env> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// # let db = lmdb::Database::open(
@@ -722,7 +722,7 @@ impl<'env> ReadTransaction<'env> {
     /// inner transaction instead of taking a copy of the `Rc`, etc.
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// use std::sync::Arc;
     ///
     /// use lmdb::traits::{AssocCursor, CreateCursor};
@@ -795,7 +795,7 @@ impl<'env> ReadTransaction<'env> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// let mut saved_txn;
@@ -889,7 +889,7 @@ impl<'env> WriteTransaction<'env> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// let db = lmdb::Database::open(
@@ -1063,7 +1063,7 @@ impl<'txn> WriteAccessor<'txn> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// #[repr(C, packed)]
     /// #[derive(Clone,Copy,Debug,PartialEq,Eq)]
     /// struct MyStruct {
@@ -1120,7 +1120,7 @@ impl<'txn> WriteAccessor<'txn> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// # let db = lmdb::Database::open(
@@ -1197,7 +1197,7 @@ impl<'txn> WriteAccessor<'txn> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// let db = lmdb::Database::open(
@@ -1243,7 +1243,7 @@ impl<'txn> WriteAccessor<'txn> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// let db = lmdb::Database::open(
@@ -1283,7 +1283,7 @@ impl<'txn> WriteAccessor<'txn> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// # let db = lmdb::Database::open(

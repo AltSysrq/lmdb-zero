@@ -59,7 +59,7 @@ impl Drop for CursorHandle {
 /// transaction and some set of cursors.
 ///
 /// ```
-/// # include!("src/example_helpers.rs");
+/// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
 /// # fn main() {
 /// # let env = create_env();
 /// # let db = defdb(&env);
@@ -79,7 +79,7 @@ impl Drop for CursorHandle {
 /// ### Example — Use reference counting for more flexibility
 ///
 /// ```
-/// # include!("src/example_helpers.rs");
+/// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
 /// use std::sync::Arc;
 ///
 /// // We need to import the `CreateCursor` trait to be able to use shared
@@ -423,7 +423,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// ## Example
         ///
         /// ```
-        /// # include!("src/example_helpers.rs");
+        /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
         /// # fn main() {
         /// # let env = create_env();
         /// # let db = dupdb(&env);
@@ -456,7 +456,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// ## Example
         ///
         /// ```
-        /// # include!("src/example_helpers.rs");
+        /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
         /// # fn main() {
         /// # let env = create_env();
         /// # let db = dupdb(&env);
@@ -489,7 +489,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// # let db = dupdb(&env);
@@ -531,7 +531,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// # let db = dupdb(&env);
@@ -578,7 +578,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// ## Example
         ///
         /// ```
-        /// # include!("src/example_helpers.rs");
+        /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
         /// # fn main() {
         /// # let env = create_env();
         /// # let db = dupdb(&env);
@@ -641,7 +641,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// ## Example
         ///
         /// ```
-        /// # include!("src/example_helpers.rs");
+        /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
         /// # fn main() {
         /// # let env = create_env();
         /// # let db = dupdb(&env);
@@ -674,7 +674,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// ## Example
         ///
         /// ```
-        /// # include!("src/example_helpers.rs");
+        /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
         /// # fn main() {
         /// # let env = create_env();
         /// # let db = dupdb(&env);
@@ -710,7 +710,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// ## Example
         ///
         /// ```
-        /// # include!("src/example_helpers.rs");
+        /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
         /// # fn main() {
         /// # let env = create_env();
         /// # let db = dupdb(&env);
@@ -748,7 +748,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// ## Example
         ///
         /// ```
-        /// # include!("src/example_helpers.rs");
+        /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
         /// # fn main() {
         /// # let env = create_env();
         /// # let db = dupdb(&env);
@@ -785,7 +785,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// ## Example
         ///
         /// ```
-        /// # include!("src/example_helpers.rs");
+        /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
         /// # fn main() {
         /// # let env = create_env();
         /// # let db = dupdb(&env);
@@ -822,7 +822,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// ## Example
         ///
         /// ```
-        /// # include!("src/example_helpers.rs");
+        /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
         /// # fn main() {
         /// # let env = create_env();
         /// # let db = dupdb(&env);
@@ -860,7 +860,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// ## Example
         ///
         /// ```
-        /// # include!("src/example_helpers.rs");
+        /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
         /// # fn main() {
         /// # let env = create_env();
         /// # let db = dupdb(&env);
@@ -897,7 +897,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
         /// ## Example
         ///
         /// ```
-        /// # include!("src/example_helpers.rs");
+        /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
         /// # fn main() {
         /// # let env = create_env();
         /// # let db = dupdb(&env);
@@ -932,7 +932,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// # let db = dupdb(&env);
@@ -970,7 +970,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// # let db = dupdb(&env);
@@ -1009,7 +1009,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// # let db = dupdb(&env);
@@ -1052,7 +1052,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// # let db = dupdb(&env);
@@ -1102,7 +1102,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// # let db = defdb(&env);
@@ -1153,7 +1153,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// #[repr(C, packed)]
     /// #[derive(Clone,Copy,Debug,PartialEq,Eq)]
     /// struct MyStruct {
@@ -1209,7 +1209,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// #[repr(C, packed)]
     /// #[derive(Clone,Copy,Debug,PartialEq,Eq)]
     /// struct MyStruct {
@@ -1295,7 +1295,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// # let db = defdb(&env);
@@ -1346,7 +1346,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// # let db = defdb(&env);
@@ -1424,7 +1424,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
     /// ## Example
     ///
     /// ```
-    /// # include!("src/example_helpers.rs");
+    /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
     /// # fn main() {
     /// # let env = create_env();
     /// # let db = dupfixeddb(&env);
