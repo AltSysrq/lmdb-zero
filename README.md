@@ -42,6 +42,10 @@ is of course possible there are bugs in handling alignment here.
 
 ## Changelog
 
+**Unreleased**: Fix panic on `Cursor::get_multiple()` if the current key has exactly
+  one item. `LmdbResultExt` is now reexported from the crate root for better
+  visibility.
+
 **0.4.2**: Fix being unable to open databases in read-only environments. Fix
   future-incompatibility warning arising from `Unaligned`.
 

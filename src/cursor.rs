@@ -1,5 +1,5 @@
 // Copyright 2016 FullContact, Inc
-// Copyright 2017 Jason Lingle
+// Copyright 2017, 2018 Jason Lingle
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -600,24 +600,57 @@ impl<'txn,'db> Cursor<'txn,'db> {
         fn get_current, ffi::MDB_cursor_op::MDB_GET_CURRENT
     }
 
-    cursor_get_0_v! {
-        /// Returns as many items as possible with the current key from the
-        /// current cursor position.
-        ///
-        /// The cursor is advanced so that `next_multiple()` returns the next
-        /// group of items, if any. Note that this does _not_ return the actual
-        /// key (which LMDB itself does not return, contrary to documentation).
-        ///
-        /// The easiest way to use this is for `V` to be a slice of `LmdbRaw`
-        /// types.
-        ///
-        /// This only makes sense on `DUPSORT` databases with `DUPFIXED` set.
-        ///
-        /// This corresponds to the `mdb_cursor_get` function with the
-        /// `MDB_GET_MULTIPLE` operation.
-        ///
-        /// See `lmdb_zero::db::DUPFIXED` for examples of usage.
-        fn get_multiple, ffi::MDB_cursor_op::MDB_GET_MULTIPLE
+    /// Returns as many items as possible with the current key from the
+    /// current cursor position.
+    ///
+    /// The cursor is advanced so that `next_multiple()` returns the next
+    /// group of items, if any. Note that this does _not_ return the actual
+    /// key (which LMDB itself does not return, contrary to documentation).
+    ///
+    /// The easiest way to use this is for `V` to be a slice of `LmdbRaw`
+    /// types.
+    ///
+    /// This only makes sense on `DUPSORT` databases with `DUPFIXED` set.
+    ///
+    /// This corresponds to the `mdb_cursor_get` function with the
+    /// `MDB_GET_MULTIPLE` operation, except that it does not have a special
+    /// case if exactly one value is bound to the key.
+    ///
+    /// See `lmdb_zero::db::DUPFIXED` for examples of usage.
+    #[inline]
+    pub fn get_multiple<'access, V : FromLmdbBytes + ?Sized>
+        (&mut self, access: &'access ConstAccessor)
+         -> Result<(&'access V)>
+    {
+        try!(assert_sensible_cursor(access, self));
+
+        let mut null_key = EMPTY_VAL;
+        let mut out_val = EMPTY_VAL;
+        unsafe {
+            lmdb_call!(ffi::mdb_cursor_get(
+                self.cursor.0, &mut null_key, &mut out_val,
+                ffi::MDB_cursor_op::MDB_GET_MULTIPLE));
+        }
+
+        if out_val.mv_data.is_null() {
+            // LMDB seemingly intentionally returns SUCCESS but a NULL data
+            // pointer if there's exactly one element.
+            // https://github.com/LMDB/lmdb/blob/0a2622317f189c7062d03d050be6766586a548b2/libraries/liblmdb/mdb.c#L7228
+            // Presumably it has something to do with the fact that single
+            // values are stored differently than dup values, though it's
+            // unclear why it doesn't do what we do here. If we see this
+            // condition, simply fall back to MDB_GET_CURRENT which doesn't
+            // modify the cursor, so the caller's follow-up call to
+            // next_multiple() will still be sound.
+            unsafe {
+                lmdb_call!(ffi::mdb_cursor_get(
+                    self.cursor.0, &mut null_key, &mut out_val,
+                    ffi::MDB_cursor_op::MDB_GET_CURRENT));
+            }
+        }
+
+        from_val(access, &out_val)
+
     }
 
     cursor_get_0_v! {
@@ -1511,5 +1544,41 @@ impl<'txn,'db> Cursor<'txn,'db> {
             lmdb_call!(ffi::mdb_cursor_count(self.cursor.0, &mut raw));
         }
         Ok(raw as usize)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use dbi::{db, Database, DatabaseOptions};
+    use error::LmdbResultExt;
+    use tx::{put, WriteTransaction};
+    use test_helpers::*;
+    use unaligned::Unaligned as U;
+    use unaligned::unaligned;
+
+    #[test]
+    fn get_multiple_with_one_item() {
+        let env = create_env();
+        let db = Database::open(
+            &env, None, &DatabaseOptions::new(
+                db::DUPSORT | db::INTEGERKEY | db::DUPFIXED | db::INTEGERDUP |
+                db::CREATE)).unwrap();
+        let txn = WriteTransaction::new(&env).unwrap();
+        {
+            let key: i32 = 42;
+            let val: i32 = 56;
+
+            let mut access = txn.access();
+            access.put(&db, &key, &val, put::Flags::empty()).unwrap();
+
+            let mut cursor = txn.cursor(&db).unwrap();
+            cursor.seek_k::<U<i32>, U<i32>>(&access, unaligned(&key)).unwrap();
+            let vals = cursor.get_multiple::<[U<i32>]>(&access).unwrap();
+            assert_eq!(1, vals.len());
+            assert_eq!(val, vals[0].get());
+
+            assert!(cursor.next_multiple::<[U<i32>]>(&access)
+                    .to_opt().unwrap().is_none());
+        }
     }
 }

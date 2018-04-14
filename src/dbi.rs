@@ -1,5 +1,5 @@
 // Copyright 2016 FullContact, Inc
-// Copyright 2017 Jason Lingle
+// Copyright 2017, 2018 Jason Lingle
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -154,6 +154,7 @@ pub mod db {
             /// # fn main() {
             /// # let env = create_env();
             /// use lmdb::Unaligned as U;
+            /// use lmdb::LmdbResultExt;
             ///
             /// let db = lmdb::Database::open(
             ///   &env, Some("reversed"), &lmdb::DatabaseOptions::new(
@@ -186,12 +187,14 @@ pub mod db {
             ///       // use `next_multiple` to get the rest.
             ///       cursor.get_multiple::<[U<u32>]>(&access).unwrap()
             ///     } else {
-            ///       match cursor.next_multiple::<[U<u32>]>(&access) {
+            ///       // .to_opt() to turn NOTFOUND into None
+            ///       match cursor.next_multiple::<[U<u32>]>(&access).to_opt() {
             ///         // Ok if there's still more for the current key
-            ///         Ok(c) => c,
-            ///         // Error if at the end of the key.
-            ///         // NOTE: A real program would check the error code.
-            ///         Err(_) => break,
+            ///         Ok(Some(c)) => c,
+            ///         // NOTFOUND error (=> None) at end of key
+            ///         Ok(None) => break,
+            ///         // Handle other errors
+            ///         Err(e) => panic!("LMDB error: {}", e),
             ///       }
             ///     };
             ///     for ch in chars {

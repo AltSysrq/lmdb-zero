@@ -275,6 +275,7 @@ extern crate liblmdb_sys as ffi;
 extern crate libc;
 extern crate supercow;
 #[macro_use] extern crate bitflags;
+#[cfg(test)] extern crate tempdir;
 
 use std::ffi::CStr;
 
@@ -320,9 +321,10 @@ pub struct Ignore;
 
 mod mdb_vals;
 mod ffi2;
+#[cfg(test)] mod test_helpers;
 
 pub mod error;
-pub use error::{Error, Result};
+pub use error::{Error, LmdbResultExt, Result};
 
 mod env;
 pub use env::{open, copy, EnvBuilder, Environment, Stat, EnvInfo};

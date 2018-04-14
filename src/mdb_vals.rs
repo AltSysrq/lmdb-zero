@@ -31,7 +31,8 @@ pub fn as_val<V : AsLmdbBytes + ?Sized>(v: &V) -> ffi::MDB_val {
 }
 
 pub fn mdb_val_as_bytes<'a,O>(_o: &'a O, val: &ffi::MDB_val) -> &'a[u8] {
-    debug_assert!(!val.mv_data.is_null(), "MDB_val ptr is NULL");
+    debug_assert!(!val.mv_data.is_null(), "MDB_val ptr is NULL, size = {}",
+                  val.mv_size);
 
     unsafe {
         slice::from_raw_parts(
