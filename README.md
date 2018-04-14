@@ -42,7 +42,7 @@ is of course possible there are bugs in handling alignment here.
 
 ## Changelog
 
-**Unreleased**: Fix panic on `Cursor::get_multiple()` if the current key has exactly
+**0.4.3**: Fix panic on `Cursor::get_multiple()` if the current key has exactly
   one item. `LmdbResultExt` is now reexported from the crate root for better
   visibility.
 
