@@ -42,7 +42,7 @@ is of course possible there are bugs in handling alignment here.
 
 ## Changelog
 
-**Unreleased**: New `Environment` and `Database` methods to enable interoperating
+**0.4.4**: New `Environment` and `Database` methods to enable interoperating
   with native C/C++ code. `Database::dbi()` renamed to `as_raw()`. The old name
   is still available but deprecated.
 
