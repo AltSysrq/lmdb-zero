@@ -270,7 +270,7 @@ impl<'txn,'db> Cursor<'txn,'db> {
 
         let mut raw: *mut ffi::MDB_cursor = ptr::null_mut();
         unsafe {
-            lmdb_call!(ffi::mdb_cursor_open(tx::txptr(&txn), db.dbi(),
+            lmdb_call!(ffi::mdb_cursor_open(tx::txptr(&txn), db.as_raw(),
                                             &mut raw));
         }
 

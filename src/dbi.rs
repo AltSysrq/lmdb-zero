@@ -256,11 +256,14 @@ pub mod db {
 struct DbHandle<'a> {
     env: Supercow<'a, Environment>,
     dbi: ffi::MDB_dbi,
+    close_on_drop: bool,
 }
 
 impl<'a> Drop for DbHandle<'a> {
     fn drop(&mut self) {
-        env::dbi_close(&self.env, self.dbi);
+        if self.close_on_drop {
+            env::dbi_close(&self.env, self.dbi);
+        }
     }
 }
 
@@ -590,6 +593,15 @@ impl<'a> Database<'a> {
     /// One may not open the same database handle multiple times. Attempting to
     /// do so will result in the `Error::Reopened` error.
     ///
+    /// Beware that if the underlying `MDB_env` is being shared (for example,
+    /// with native code via `Environment::borrow_raw`), using this method to
+    /// open a `Database` can result in premature closing of the database
+    /// handle since the `Database` is presumed to own the database handle, but
+    /// LMDB will return a shared handle if the database is already open
+    /// elsewhere. The [`disown()`](#method.disown) method can be used to
+    /// ensure the `Database` does not assume ownership of the database
+    /// handle.
+    ///
     /// ## Examples
     ///
     /// ### Open the default database with default options
@@ -727,8 +739,73 @@ impl<'a> Database<'a> {
             db: DbHandle {
                 env: env,
                 dbi: raw,
+                close_on_drop: true,
             }
         })
+    }
+
+    /// Wrap a raw `MDB_dbi` associated with this environment.
+    ///
+    /// This call assumes ownership of the `MDB_dbi`, and the resulting
+    /// `Database` will close it on drop. If this is not desired, see
+    /// [`borrow_raw()`](#method.borrow_raw) instead.
+    ///
+    /// ## Unsafety
+    ///
+    /// `raw` must reference a database currently open in `env`.
+    ///
+    /// The caller must ensure that nothing closes the handle until
+    /// `into_raw()` is called and that nothing uses it after the `Database` is
+    /// dropped normally.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if `raw` is a handle already owned by `env`.
+    pub unsafe fn from_raw<E>(env: E, raw: ffi::MDB_dbi) -> Self
+    where E : Into<Supercow<'a, Environment>> {
+        let env: Supercow<'a, Environment> = env.into();
+
+        use env;
+        {
+            let mut locked_dbis = env::env_open_dbis(&env).lock()
+                .expect("open_dbis lock poisoned");
+
+            if !locked_dbis.insert(raw) {
+                panic!("DBI {} already opened in this environment", raw);
+            }
+        }
+
+        Database {
+            db: DbHandle {
+                env: env,
+                dbi: raw,
+                close_on_drop: true,
+            }
+        }
+    }
+
+    /// Wrap a raw `MDB_dbi` associated with this environment without taking
+    /// ownership.
+    ///
+    /// This call does not assume ownership of `raw`, and as a result neither
+    /// checks whether any other `Database`s exist with the same handle, nor
+    /// records this particular handle in `env`'s list of owned databases.
+    ///
+    /// ## Unsafety
+    ///
+    /// `raw` must reference a database currently open in `env`.
+    ///
+    /// The caller must ensure that nothing closes the handle until the
+    /// resulting `Database` is dropped.
+    pub unsafe fn borrow_raw<E>(env: E, raw: ffi::MDB_dbi) -> Self
+    where E : Into<Supercow<'a, Environment>> {
+        Database {
+            db: DbHandle {
+                env: env.into(),
+                dbi: raw,
+                close_on_drop: false,
+            }
+        }
     }
 
     /// Deletes this database.
@@ -827,7 +904,83 @@ impl<'a> Database<'a> {
     }
 
     /// Returns the underlying integer handle for this database.
+    ///
+    /// ## Deprecated
+    ///
+    /// Renamed to `as_raw()` for consistency.
+    #[deprecated(since = "0.4.4", note = "use as_raw() instead")]
     pub fn dbi(&self) -> ffi::MDB_dbi {
         self.db.dbi
+    }
+
+    /// Returns the underlying integer handle for this database.
+    #[inline]
+    pub fn as_raw(&self) -> ffi::MDB_dbi {
+        self.db.dbi
+    }
+
+    /// Consume self, returning the underlying integer handle for this
+    /// database.
+    ///
+    /// If this `Database` owns the database handle, it is not closed, but it
+    /// is removed from the list of handles owned by the `Environment`.
+    pub fn into_raw(mut self) -> ffi::MDB_dbi {
+        self.disown();
+        self.db.dbi
+    }
+
+    /// Prevent the underlying `MDB_dbi` handle from being closed when this
+    /// `Database` is dropped.
+    ///
+    /// This is useful when sharing an `MDB_env` with a native library, as in
+    /// such a context the `MDB_dbi` handles are also involuntarily shared.
+    pub fn disown(&mut self) {
+        use env;
+
+        if self.db.close_on_drop {
+            let mut locked_dbis = env::env_open_dbis(&self.db.env).lock()
+                .expect("open_dbis lock poisoned");
+
+            locked_dbis.remove(&self.db.dbi);
+            self.db.close_on_drop = false;
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use test_helpers::*;
+    use dbi::*;
+    use tx::*;
+
+    #[test]
+    fn disown_allows_sharing() {
+        let env = create_env();
+        let mut db1 = defdb(&env);
+        db1.disown();
+        let db2 = defdb(&env);
+
+        let tx = WriteTransaction::new(&env).unwrap();
+        tx.access().put(&db1, "foo", "bar", put::Flags::empty()).unwrap();
+        tx.commit().unwrap();
+        drop(db1);
+
+        let tx = ReadTransaction::new(&env).unwrap();
+        assert_eq!("bar", tx.access().get::<str,str>(&db2, "foo").unwrap());
+    }
+
+    #[test]
+    fn borrow_raw_allows_sharing() {
+        let env = create_env();
+        let db1 = defdb(&env);
+        let db2 = unsafe { Database::borrow_raw(&env, db1.as_raw()) };
+
+        let tx = WriteTransaction::new(&env).unwrap();
+        tx.access().put(&db2, "foo", "bar", put::Flags::empty()).unwrap();
+        tx.commit().unwrap();
+        drop(db2);
+
+        let tx = ReadTransaction::new(&env).unwrap();
+        assert_eq!("bar", tx.access().get::<str,str>(&db1, "foo").unwrap());
     }
 }
