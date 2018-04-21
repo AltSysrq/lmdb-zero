@@ -220,6 +220,7 @@ pub mod db {
             ///
             /// ## Example
             ///
+            /// ```
             /// # include!(concat!(env!("CARGO_MANIFEST_DIR"),"/src/example_helpers.rs"));
             /// # fn main() {
             /// # let env = create_env();

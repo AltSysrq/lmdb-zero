@@ -24,7 +24,7 @@ use traits::*;
 ///
 /// There is no way to get a reference to the contained value, as Rust
 /// currently has no way to express that the reference may be misaligned. (See
-/// also https://github.com/rust-lang/rust/issues/27060.)
+/// also [https://github.com/rust-lang/rust/issues/27060](https://github.com/rust-lang/rust/issues/27060).)
 ///
 /// ### Example
 ///

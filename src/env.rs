@@ -631,8 +631,8 @@ impl Environment {
 
     /// Get the maximum size of keys and `DUPSORT` data we can write.
     ///
-    /// Depends on the compile-time constant `MDB_MAXKEYSIZE` in LMDB. Default
-    /// 511.
+    /// Depends on the compile-time constant `MDB_MAXKEYSIZE` in LMDB.
+    /// Default 511.
     pub fn maxkeysize(&self) -> u32 {
         unsafe {
             ffi::mdb_env_get_maxkeysize(self.env.0) as u32
