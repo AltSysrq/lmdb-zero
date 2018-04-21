@@ -593,7 +593,7 @@ impl<'env> ConstTransaction<'env> {
 
         unsafe {
             let mut raw: ffi::MDB_stat = mem::zeroed();
-            lmdb_call!(ffi::mdb_stat(self.tx.0, db.dbi(), &mut raw));
+            lmdb_call!(ffi::mdb_stat(self.tx.0, db.as_raw(), &mut raw));
             Ok(raw.into())
         }
     }
@@ -604,7 +604,7 @@ impl<'env> ConstTransaction<'env> {
 
         let mut raw: c_uint = 0;
         unsafe {
-            lmdb_call!(ffi::mdb_dbi_flags(self.tx.0, db.dbi(), &mut raw));
+            lmdb_call!(ffi::mdb_dbi_flags(self.tx.0, db.as_raw(), &mut raw));
         }
         Ok(db::Flags::from_bits_truncate(raw))
     }
@@ -1000,7 +1000,7 @@ impl<'txn> ConstAccessor<'txn> {
         let mut out_val = EMPTY_VAL;
         unsafe {
             lmdb_call!(ffi::mdb_get(
-                self.txptr(), db.dbi(), &mut mv_key, &mut out_val));
+                self.txptr(), db.as_raw(), &mut mv_key, &mut out_val));
         }
 
         from_val(self, &out_val)
@@ -1041,7 +1041,7 @@ impl<'txn> WriteAccessor<'txn> {
         let mut mv_val = as_val(value);
         unsafe {
             lmdb_call!(ffi::mdb_put(
-                self.txptr(), db.dbi(), &mut mv_key, &mut mv_val,
+                self.txptr(), db.as_raw(), &mut mv_key, &mut mv_val,
                 flags.bits()));
         }
         Ok(())
@@ -1181,7 +1181,7 @@ impl<'txn> WriteAccessor<'txn> {
         let mut out_val = EMPTY_VAL;
         out_val.mv_size = size;
         lmdb_call!(ffi::mdb_put(
-            self.txptr(), db.dbi(), &mut mv_key, &mut out_val,
+            self.txptr(), db.as_raw(), &mut mv_key, &mut out_val,
             flags.bits() | ffi::MDB_RESERVE));
 
         Ok(from_reserved(self, &out_val))
@@ -1225,7 +1225,7 @@ impl<'txn> WriteAccessor<'txn> {
         let mut mv_key = as_val(key);
         unsafe {
             lmdb_call!(ffi::mdb_del(
-                self.txptr(), db.dbi(), &mut mv_key, ptr::null_mut()));
+                self.txptr(), db.as_raw(), &mut mv_key, ptr::null_mut()));
         }
 
         Ok(())
@@ -1272,7 +1272,7 @@ impl<'txn> WriteAccessor<'txn> {
         let mut mv_val = as_val(val);
         unsafe {
             lmdb_call!(ffi::mdb_del(
-                self.txptr(), db.dbi(), &mut mv_key, &mut mv_val));
+                self.txptr(), db.as_raw(), &mut mv_key, &mut mv_val));
         }
 
         Ok(())
@@ -1307,7 +1307,7 @@ impl<'txn> WriteAccessor<'txn> {
     pub fn clear_db(&mut self, db: &Database) -> Result<()> {
         try!(db.assert_same_env(self.env()));
         unsafe {
-            lmdb_call!(ffi::mdb_drop(self.txptr(), db.dbi(), 0));
+            lmdb_call!(ffi::mdb_drop(self.txptr(), db.as_raw(), 0));
         }
         Ok(())
     }

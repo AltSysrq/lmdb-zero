@@ -42,6 +42,10 @@ is of course possible there are bugs in handling alignment here.
 
 ## Changelog
 
+**Unreleased**: New `Environment` and `Database` methods to enable interoperating
+  with native C/C++ code. `Database::dbi()` renamed to `as_raw()`. The old name
+  is still available but deprecated.
+
 **0.4.3**: Fix panic on `Cursor::get_multiple()` if the current key has exactly
   one item. `LmdbResultExt` is now reexported from the crate root for better
   visibility.

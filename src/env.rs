@@ -1,5 +1,5 @@
 // Copyright 2016 FullContact, Inc
-// Copyright 2017 Jason Lingle
+// Copyright 2017, 2018 Jason Lingle
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -152,14 +152,16 @@ pub mod copy {
 }
 
 #[derive(Debug)]
-struct EnvHandle(*mut ffi::MDB_env);
+struct EnvHandle(*mut ffi::MDB_env, bool);
 
 unsafe impl Sync for EnvHandle { }
 unsafe impl Send for EnvHandle { }
 impl Drop for EnvHandle {
     fn drop(&mut self) {
-        unsafe {
-            ffi::mdb_env_close(self.0)
+        if self.1 {
+            unsafe {
+                ffi::mdb_env_close(self.0)
+            }
         }
     }
 }
@@ -178,7 +180,7 @@ impl EnvBuilder {
         let mut env: *mut ffi::MDB_env = ptr::null_mut();
         unsafe {
             lmdb_call!(ffi::mdb_env_create(&mut env));
-            Ok(EnvBuilder { env: EnvHandle(env) })
+            Ok(EnvBuilder { env: EnvHandle(env, true) })
         }
     }
 
@@ -334,6 +336,87 @@ pub struct EnvInfo {
 }
 
 impl Environment {
+    /// Wrap a raw LMDB environment handle in an `Environment`.
+    ///
+    /// The `Environment` assumes ownership of the `MDB_env`. If you do not
+    /// want this, see [`borrow_raw()`](#method.borrow_raw) instead.
+    ///
+    /// ## Unsafety
+    ///
+    /// `env` must point to a valid `MDB_env`.
+    ///
+    /// It is the caller's responsibility to ensure that nothing destroys the
+    /// `MDB_env` before [`into_raw()`](#method.into_raw) is called, and that
+    /// nothing attempts to use the `MDB_env` after `Environment` is dropped
+    /// normally.
+    ///
+    /// It is safe for multiple `Environment`s bound to the same `MDB_env` to
+    /// coexist (though the others would need to be created by `borrow_raw`).
+    /// However, care must be taken when using databases since by default the
+    /// `Environment` will assume ownership of those as well.
+    pub unsafe fn from_raw(env: *mut ffi::MDB_env) -> Self {
+        Environment {
+            env: EnvHandle(env, true),
+            open_dbis: Mutex::new(HashSet::new()),
+        }
+    }
+
+    /// Wrap a raw LMDB environment handle in an `Environment` without taking
+    /// ownership.
+    ///
+    /// The `Environment` does not assume ownership of the `MDB_env`, and will
+    /// not destroy it when it is dropped. See [`from_raw()`](#method.from_raw)
+    /// if taking ownership is desired.
+    ///
+    /// Note that this does not affect assumed ownership of `MDB_dbi` handles;
+    /// databases opened by `Database::open` are still presumed owned.
+    ///
+    /// ## Unsafety
+    ///
+    /// `env` must point to a valid `MDB_env`.
+    ///
+    /// It is safe for multiple `Environment`s bound to the same `MDB_env` to
+    /// coexist (though the others would need to be created by `borrow_raw`).
+    /// However, care must be taken when using databases since by default the
+    /// `Environment` will assume ownership of those as well.
+    pub unsafe fn borrow_raw(env: *mut ffi::MDB_env) -> Self {
+        Environment {
+            env: EnvHandle(env, false),
+            open_dbis: Mutex::new(HashSet::new()),
+        }
+    }
+
+    /// Return the underlying `MDB_env` handle.
+    ///
+    /// ## Safety
+    ///
+    /// While this call is in and of itself safe, the caller must ensure that
+    /// operations against the backing store do not violate Rust aliasing
+    /// rules, and must not take any action that would cause the `MDB_env` to
+    /// be destroyed prematurely, or to use it after this `Environment` is
+    /// destroyed.
+    pub fn as_raw(&self) -> *mut ffi::MDB_env {
+        self.env.0
+    }
+
+    /// Consume this `Environment` and return the underlying handle.
+    ///
+    /// After this call, it is the caller's responsibility to ensure that the
+    /// `MDB_env` is eventually destroyed, if it was actually owned by this
+    /// `Environment` (compare [`from_raw`](#method.from_raw) and
+    /// [`borrow_raw`](#method.borrow_raw)).
+    ///
+    /// ## Safety
+    ///
+    /// While this call is in and of itself safe, the caller must ensure that
+    /// operations against the backing store do not violate Rust aliasing
+    /// rules.
+    pub fn into_raw(self) -> *mut ffi::MDB_env {
+        let ret = self.env.0;
+        mem::forget(self.env);
+        ret
+    }
+
     /// Copy an LMDB environment to the specified path, with options.
     ///
     /// This function may be used to make a backup of an existing environment.
@@ -548,8 +631,8 @@ impl Environment {
 
     /// Get the maximum size of keys and `DUPSORT` data we can write.
     ///
-    /// Depends on the compile-time constant `MDB_MAXKEYSIZE` in LMDB. Default
-    /// 511.
+    /// Depends on the compile-time constant `MDB_MAXKEYSIZE` in LMDB.
+    /// Default 511.
     pub fn maxkeysize(&self) -> u32 {
         unsafe {
             ffi::mdb_env_get_maxkeysize(self.env.0) as u32
@@ -609,4 +692,29 @@ pub fn env_ptr(this: &Environment) -> *mut ffi::MDB_env {
 // Internal API
 pub fn env_open_dbis(this: &Environment) -> &Mutex<HashSet<ffi::MDB_dbi>> {
     &this.open_dbis
+}
+
+#[cfg(test)]
+mod test {
+    use test_helpers::*;
+    use env::*;
+    use tx::*;
+
+    #[test]
+    fn borrow_raw_doesnt_take_ownership() {
+        let outer_env = create_env();
+        {
+            let inner_env = unsafe {
+                Environment::borrow_raw(outer_env.as_raw())
+            };
+            let db = defdb(&inner_env);
+            let tx = WriteTransaction::new(&inner_env).unwrap();
+            tx.access().put(&db, "foo", "bar", put::Flags::empty()).unwrap();
+            tx.commit().unwrap();
+        }
+
+        let db = defdb(&outer_env);
+        let tx = ReadTransaction::new(&outer_env).unwrap();
+        assert_eq!("bar", tx.access().get::<str,str>(&db, "foo").unwrap());
+    }
 }
