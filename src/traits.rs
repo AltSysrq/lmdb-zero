@@ -161,7 +161,7 @@ impl<'txn> CreateCursor<'txn> for Arc<WriteTransaction<'static>> {
 /// well as `Rc` and `Arc`. The latter two require the transaction's inner
 /// lifetime to be `'static`.
 pub trait AssocCursor<'txn> {
-    /// Associates a saved read-only with this transaction.
+    /// Associates a saved read-only cursor with this transaction.
     ///
     /// The cursor will be rebound to this transaction, but will continue using
     /// the same database that it was previously.
