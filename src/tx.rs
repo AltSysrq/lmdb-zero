@@ -770,7 +770,7 @@ impl<'env> ReadTransaction<'env> {
         Ok(cursor::to_stale(cursor, env))
     }
 
-    /// Associates a saved read-only with this transaction.
+    /// Associates a saved read-only cursor with this transaction.
     ///
     /// The cursor will be rebound to this transaction, but will continue using
     /// the same database that it was previously.
